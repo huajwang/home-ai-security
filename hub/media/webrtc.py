@@ -1,0 +1,274 @@
+"""WebRTC door peer: annotated camera frames, PC mic, PC speakers."""
+
+from __future__ import annotations
+
+import asyncio
+import fractions
+import queue
+import threading
+import time
+import uuid
+from typing import Any
+
+import numpy as np
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+from aiortc.sdp import candidate_from_sdp
+from av import AudioFrame, VideoFrame
+
+from hub import config
+from hub.vision.worker import VisionWorker
+
+try:
+    import sounddevice as sd
+except Exception:  # noqa: BLE001
+    sd = None
+
+
+class AnnotatedVideoTrack(VideoStreamTrack):
+    """Downscaled camera frames using aiortc's 90 kHz timestamps so VP8 encodes."""
+
+    kind = "video"
+
+    def __init__(self, vision: VisionWorker) -> None:
+        super().__init__()
+        self.vision = vision
+
+    async def recv(self) -> VideoFrame:
+        pts, time_base = await self.next_timestamp()
+        frame = self.vision.latest_webrtc_bgr()
+        if frame is None:
+            frame = np.zeros((360, 640, 3), dtype=np.uint8)
+        av_frame = VideoFrame.from_ndarray(frame, format="bgr24")
+        av_frame.pts = pts
+        av_frame.time_base = time_base
+        return av_frame
+
+
+def _try_microphone() -> Any | None:
+    if not config.AUDIO_ENABLED or sd is None:
+        return None
+    try:
+        from aiortc import AudioStreamTrack
+
+        class _Mic(AudioStreamTrack):
+            def __init__(self) -> None:
+                super().__init__()
+                self.samplerate = config.AUDIO_SAMPLE_RATE
+                self.samples = 960
+                self._queue: asyncio.Queue[np.ndarray] = asyncio.Queue(maxsize=8)
+                self._stream = sd.InputStream(
+                    samplerate=self.samplerate,
+                    channels=1,
+                    dtype="int16",
+                    blocksize=self.samples,
+                    callback=self._callback,
+                )
+                self._stream.start()
+                self._timestamp = 0
+
+            def _callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
+                try:
+                    self._queue.put_nowait(indata.copy())
+                except asyncio.QueueFull:
+                    pass
+
+            async def recv(self) -> AudioFrame:
+                try:
+                    data = await asyncio.wait_for(self._queue.get(), timeout=0.5)
+                except TimeoutError:
+                    data = np.zeros((self.samples, 1), dtype=np.int16)
+                samples = data.reshape(-1)
+                frame = AudioFrame.from_ndarray(np.array([samples]), format="s16", layout="mono")
+                frame.sample_rate = self.samplerate
+                frame.pts = self._timestamp
+                frame.time_base = fractions.Fraction(1, self.samplerate)
+                self._timestamp += samples.shape[0]
+                return frame
+
+            def stop(self) -> None:
+                try:
+                    self._stream.stop()
+                    self._stream.close()
+                except Exception:
+                    pass
+                super().stop()
+
+        return _Mic()
+    except Exception as exc:  # noqa: BLE001
+        print(f"Microphone unavailable: {exc}")
+        return None
+
+
+async def _play_remote_audio(track: Any) -> None:
+    """Decode on the event loop; write to speakers on a worker thread."""
+    if sd is None or not config.AUDIO_ENABLED:
+        return
+    pending: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=25)
+    stop = threading.Event()
+
+    def _speaker() -> None:
+        try:
+            stream = sd.OutputStream(
+                samplerate=config.AUDIO_SAMPLE_RATE,
+                channels=1,
+                dtype="int16",
+                blocksize=960,
+            )
+            stream.start()
+        except Exception as exc:  # noqa: BLE001
+            print(f"Speakers unavailable: {exc}")
+            return
+        try:
+            while not stop.is_set():
+                try:
+                    pcm = pending.get(timeout=0.25)
+                except queue.Empty:
+                    continue
+                if pcm is None:
+                    break
+                stream.write(pcm.reshape(-1, 1))
+        except Exception:
+            pass
+        finally:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                pass
+
+    worker = threading.Thread(target=_speaker, name="door-speaker", daemon=True)
+    worker.start()
+    try:
+        while True:
+            frame = await track.recv()
+            raw = frame.to_ndarray()
+            if raw.ndim == 2:
+                pcm = raw[0] if raw.shape[0] <= raw.shape[1] else raw[:, 0]
+            else:
+                pcm = raw
+            pcm = np.asarray(pcm, dtype=np.int16)
+            try:
+                pending.put_nowait(pcm)
+            except queue.Full:
+                try:
+                    pending.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    pending.put_nowait(pcm)
+                except queue.Full:
+                    pass
+    except Exception:
+        pass
+    finally:
+        stop.set()
+        try:
+            pending.put_nowait(None)
+        except queue.Full:
+            pass
+
+
+class CallSession:
+    def __init__(self, call_id: str, pc: RTCPeerConnection, user_id: int) -> None:
+        self.id = call_id
+        self.pc = pc
+        self.user_id = user_id
+        self.created_at = time.time()
+        self.pending_ice: list[dict[str, Any]] = []
+        self.tasks: list[asyncio.Task] = []
+        self.remote_ready = False
+        self.mic = None
+
+
+class CallManager:
+    def __init__(self, vision: VisionWorker) -> None:
+        self.vision = vision
+        self._calls: dict[str, CallSession] = {}
+
+    def create(self, user_id: int) -> CallSession:
+        call_id = str(uuid.uuid4())
+        # Empty list, not None: aiortc treats None as stun.l.google.com (5s STUN wait).
+        pc = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+        session = CallSession(call_id, pc, user_id)
+        pc.addTrack(AnnotatedVideoTrack(self.vision))
+        mic = _try_microphone()
+        session.mic = mic
+        if mic is not None:
+            pc.addTrack(mic)
+
+        @pc.on("track")
+        def on_track(track: Any) -> None:
+            if track.kind == "audio":
+                session.tasks.append(asyncio.create_task(_play_remote_audio(track)))
+
+        @pc.on("iceconnectionstatechange")
+        async def on_ice_state() -> None:
+            state = pc.iceConnectionState
+            print(f"Call {call_id} ICE {state}")
+            # "disconnected" is often a brief consent-check blip (~15-20s). Do not tear down.
+            if state in {"failed", "closed"}:
+                await self.hangup(call_id)
+
+        self._calls[call_id] = session
+        return session
+
+    def get(self, call_id: str) -> CallSession | None:
+        return self._calls.get(call_id)
+
+    async def handle_offer(self, call_id: str, sdp: str, sdp_type: str = "offer") -> dict[str, str]:
+        session = self._calls.get(call_id)
+        if session is None:
+            raise KeyError(call_id)
+        started = time.monotonic()
+        await session.pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type=sdp_type))
+        session.remote_ready = True
+        await self._flush_ice(session)
+        answer = await session.pc.createAnswer()
+        await session.pc.setLocalDescription(answer)
+        local = session.pc.localDescription
+        print(f"Call {call_id} answer in {time.monotonic() - started:.2f}s")
+        return {"sdp": local.sdp, "type": local.type}
+
+    async def handle_answer(self, call_id: str, sdp: str, sdp_type: str = "answer") -> None:
+        session = self._calls.get(call_id)
+        if session is None:
+            raise KeyError(call_id)
+        await session.pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type=sdp_type))
+        session.remote_ready = True
+        await self._flush_ice(session)
+
+    async def add_ice(self, call_id: str, candidate: dict[str, Any]) -> None:
+        session = self._calls.get(call_id)
+        if session is None:
+            raise KeyError(call_id)
+        session.pending_ice.append(candidate)
+        if session.remote_ready:
+            await self._flush_ice(session)
+
+    async def _flush_ice(self, session: CallSession) -> None:
+        pending = session.pending_ice
+        session.pending_ice = []
+        for candidate in pending:
+            raw = (candidate.get("candidate") or "").strip()
+            if not raw:
+                continue
+            if raw.startswith("candidate:"):
+                raw = raw.split(":", 1)[1]
+            ice = candidate_from_sdp(raw)
+            ice.sdpMid = candidate.get("sdpMid")
+            ice.sdpMLineIndex = candidate.get("sdpMLineIndex")
+            await session.pc.addIceCandidate(ice)
+
+    async def hangup(self, call_id: str) -> None:
+        session = self._calls.pop(call_id, None)
+        if session is None:
+            return
+        for task in session.tasks:
+            task.cancel()
+        if session.mic is not None:
+            try:
+                session.mic.stop()
+            except Exception:
+                pass
+        await session.pc.close()
+

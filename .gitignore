@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Hub data and model weights
+hub/data/
+tests/_tmp_data/
+*.pt
+*.onnx
+
+# TLS material (generate locally with mkcert)
+certs/*.pem
+certs/*.key
+certs/*.crt
+!certs/README.md
+
+# Android
+android/.gradle/
+android/**/build/
+android/local.properties
+android/**/*.iml
+android/.idea/
+*.apk
+*.aab
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

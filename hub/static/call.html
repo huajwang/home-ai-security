@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Hub WebRTC probe (dev)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 24px auto; }
+    input { width: 100%; margin: 4px 0 12px; padding: 8px; }
+    button { padding: 8px 16px; margin-right: 8px; }
+    video { width: 100%; background: #111; }
+    pre { background: #f4f4f4; padding: 8px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Dev intercom probe</h1>
+  <p>Product clients are the Android apps. This page is only for hub bring-up.</p>
+  <label>Hub origin</label>
+  <input id="origin" value="" />
+  <label>Username</label>
+  <input id="user" value="owner" />
+  <label>Password</label>
+  <input id="pass" type="password" value="changeme" />
+  <button id="login">Login</button>
+  <button id="talk">Talk</button>
+  <button id="hang">Hang up</button>
+  <video id="remote" autoplay playsinline></video>
+  <pre id="log"></pre>
+  <script>
+    const log = (m) => { document.getElementById("log").textContent += m + "\n"; };
+    document.getElementById("origin").value = location.origin;
+    let token = null, pc = null, callId = null;
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+      if (token) headers["Authorization"] = "Bearer " + token;
+      const res = await fetch(document.getElementById("origin").value + path, {
+        method: opts.method || "GET",
+        headers,
+        body: opts.body ? JSON.stringify(opts.body) : undefined
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || res.statusText);
+      return data;
+    }
+
+    document.getElementById("login").onclick = async () => {
+      const data = await api("/v1/auth/login", {
+        method: "POST",
+        body: {
+          username: document.getElementById("user").value,
+          password: document.getElementById("pass").value,
+          device_name: "dev-browser",
+          device_role: "phone"
+        }
+      });
+      token = data.access_token;
+      log("logged in as " + data.user.username);
+    };
+
+    document.getElementById("talk").onclick = async () => {
+      const created = await api("/v1/calls", { method: "POST" });
+      callId = created.call_id;
+      pc = new RTCPeerConnection({ iceServers: [] });
+      pc.ontrack = (ev) => { document.getElementById("remote").srcObject = ev.streams[0]; };
+      const local = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      local.getTracks().forEach((t) => pc.addTrack(t, local));
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const answer = await api("/v1/calls/" + callId + "/offer", {
+        method: "POST",
+        body: { sdp: offer.sdp, type: "offer" }
+      });
+      await pc.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
+      log("call " + callId);
+    };
+
+    document.getElementById("hang").onclick = async () => {
+      if (callId) await api("/v1/calls/" + callId, { method: "DELETE" });
+      if (pc) pc.close();
+      pc = null; callId = null;
+      log("hung up");
+    };
+  </script>
+</body>
+</html>
