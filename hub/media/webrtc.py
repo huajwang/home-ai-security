@@ -14,6 +14,7 @@ import numpy as np
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.sdp import candidate_from_sdp
 from av import AudioFrame, VideoFrame
+from av.audio.resampler import AudioResampler
 
 from hub import config
 from hub.vision.worker import VisionWorker
@@ -99,11 +100,27 @@ def _try_microphone() -> Any | None:
         return None
 
 
+def _to_s16_mono(samples: np.ndarray) -> np.ndarray:
+    pcm = np.asarray(samples).reshape(-1)
+    if np.issubdtype(pcm.dtype, np.floating):
+        return np.clip(pcm * 32767.0, -32768, 32767).astype(np.int16)
+    if pcm.dtype != np.int16:
+        return pcm.astype(np.int16)
+    return pcm
+
+
 async def _play_remote_audio(track: Any) -> None:
-    """Decode on the event loop; write to speakers on a worker thread."""
+    """Decode tablet audio and play it on the PC speakers."""
     if sd is None or not config.AUDIO_ENABLED:
+        print("Remote audio skipped: sounddevice/audio disabled")
         return
-    pending: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=25)
+    try:
+        out_info = sd.query_devices(kind="output")
+        print(f"Playing tablet audio on: {out_info.get('name')}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Speaker query failed: {exc}")
+    resampler = AudioResampler(format="s16", layout="mono", rate=config.AUDIO_SAMPLE_RATE)
+    pending: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=40)
     stop = threading.Event()
 
     def _speaker() -> None:
@@ -127,8 +144,8 @@ async def _play_remote_audio(track: Any) -> None:
                 if pcm is None:
                     break
                 stream.write(pcm.reshape(-1, 1))
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            print(f"Speaker write failed: {exc}")
         finally:
             try:
                 stream.stop()
@@ -138,28 +155,34 @@ async def _play_remote_audio(track: Any) -> None:
 
     worker = threading.Thread(target=_speaker, name="door-speaker", daemon=True)
     worker.start()
+    first = True
     try:
         while True:
             frame = await track.recv()
-            raw = frame.to_ndarray()
-            if raw.ndim == 2:
-                pcm = raw[0] if raw.shape[0] <= raw.shape[1] else raw[:, 0]
-            else:
-                pcm = raw
-            pcm = np.asarray(pcm, dtype=np.int16)
-            try:
-                pending.put_nowait(pcm)
-            except queue.Full:
-                try:
-                    pending.get_nowait()
-                except queue.Empty:
-                    pass
+            if first:
+                print(
+                    f"Remote audio frame rate={getattr(frame, 'sample_rate', None)} "
+                    f"fmt={getattr(frame, 'format', None)} layout={getattr(frame, 'layout', None)}"
+                )
+            for converted in resampler.resample(frame):
+                pcm = _to_s16_mono(converted.to_ndarray())
+                if first:
+                    rms = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2))) if pcm.size else 0.0
+                    print(f"Remote audio first PCM samples={pcm.size} rms={rms:.1f}")
+                    first = False
                 try:
                     pending.put_nowait(pcm)
                 except queue.Full:
-                    pass
-    except Exception:
-        pass
+                    try:
+                        pending.get_nowait()
+                    except queue.Empty:
+                        pass
+                    try:
+                        pending.put_nowait(pcm)
+                    except queue.Full:
+                        pass
+    except Exception as exc:  # noqa: BLE001
+        print(f"Remote audio ended: {exc}")
     finally:
         stop.set()
         try:
@@ -178,6 +201,7 @@ class CallSession:
         self.tasks: list[asyncio.Task] = []
         self.remote_ready = False
         self.mic = None
+        self.audio_playing = False
 
 
 class CallManager:
@@ -196,15 +220,25 @@ class CallManager:
         if mic is not None:
             pc.addTrack(mic)
 
+        def _start_remote_audio(track: Any) -> None:
+            if session.audio_playing or track is None or getattr(track, "kind", None) != "audio":
+                return
+            session.audio_playing = True
+            print(f"Call {call_id} starting tablet playback")
+            session.tasks.append(asyncio.create_task(_play_remote_audio(track)))
+
         @pc.on("track")
         def on_track(track: Any) -> None:
-            if track.kind == "audio":
-                session.tasks.append(asyncio.create_task(_play_remote_audio(track)))
+            print(f"Call {call_id} remote track {track.kind}")
+            _start_remote_audio(track)
 
         @pc.on("iceconnectionstatechange")
         async def on_ice_state() -> None:
             state = pc.iceConnectionState
             print(f"Call {call_id} ICE {state}")
+            if state in {"connected", "completed"}:
+                for receiver in pc.getReceivers():
+                    _start_remote_audio(getattr(receiver, "track", None))
             # "disconnected" is often a brief consent-check blip (~15-20s). Do not tear down.
             if state in {"failed", "closed"}:
                 await self.hangup(call_id)
