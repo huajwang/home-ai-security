@@ -1,6 +1,7 @@
 package com.homeai.security.shared.webrtc
 
 import android.content.Context
+import android.media.AudioManager
 import android.util.Log
 import com.homeai.security.shared.api.HubClient
 import org.webrtc.AudioSource
@@ -12,6 +13,7 @@ import org.webrtc.EglBase
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStream
+import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RendererCommon
@@ -21,12 +23,13 @@ import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
+import org.webrtc.audio.JavaAudioDeviceModule
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class DoorCall(
-    context: Context,
+    private val context: Context,
     private val hub: HubClient,
     private val renderer: SurfaceViewRenderer
 ) {
@@ -35,13 +38,20 @@ class DoorCall(
     private var peer: PeerConnection? = null
     private var audioSource: AudioSource? = null
     private var audioTrack: AudioTrack? = null
+    private var audioDeviceModule: JavaAudioDeviceModule? = null
     private var callId: String? = null
 
     init {
         val options = PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
             .createInitializationOptions()
         PeerConnectionFactory.initialize(options)
+        val adm = JavaAudioDeviceModule.builder(context.applicationContext)
+            .setUseHardwareAcousticEchoCanceler(true)
+            .setUseHardwareNoiseSuppressor(true)
+            .createAudioDeviceModule()
+        audioDeviceModule = adm
         factory = PeerConnectionFactory.builder()
+            .setAudioDeviceModule(adm)
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
             .createPeerConnectionFactory()
@@ -112,15 +122,26 @@ class DoorCall(
             override fun onRenegotiationNeeded() {}
         })
 
-        audioSource = factory.createAudioSource(MediaConstraints())
-        audioTrack = factory.createAudioTrack("audio0", audioSource)
-        peer?.addTrack(audioTrack)
-
-        val constraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        @Suppress("DEPRECATION")
+        audioManager.isSpeakerphoneOn = true
+        audioManager.isMicrophoneMute = false
+        val sourceConstraints = MediaConstraints().apply {
+            optional.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+            optional.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
         }
-        val offer = awaitSdp { observer -> peer?.createOffer(observer, constraints) }
+        audioSource = factory.createAudioSource(sourceConstraints)
+        audioTrack = factory.createAudioTrack("audio0", audioSource).also {
+            it.setEnabled(true)
+            it.setVolume(10.0)
+        }
+        peer?.addTrack(audioTrack)
+        peer?.addTransceiver(
+            MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+        )
+        val offer = awaitSdp { observer -> peer?.createOffer(observer, MediaConstraints()) }
         awaitSet { observer -> peer?.setLocalDescription(observer, offer) }
         val (answerSdp, answerType) = hub.postOffer(id, offer.description)
         val answer = SessionDescription(
@@ -137,6 +158,13 @@ class DoorCall(
         peer = null
         audioTrack?.dispose()
         audioSource?.dispose()
+        audioDeviceModule?.release()
+        audioDeviceModule = null
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.mode = AudioManager.MODE_NORMAL
+        } catch (_: Exception) {
+        }
         if (id != null) {
             thread {
                 try {
