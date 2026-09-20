@@ -39,7 +39,11 @@ class DoorCall(
     private var audioSource: AudioSource? = null
     private var audioTrack: AudioTrack? = null
     private var audioDeviceModule: JavaAudioDeviceModule? = null
-    private var callId: String? = null
+    private var sessionId: String? = null
+    @Volatile
+    private var micEnabled = false
+
+    fun callId(): String? = sessionId
 
     init {
         val options = PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
@@ -75,7 +79,7 @@ class DoorCall(
 
     private fun startBlocking() {
         val id = hub.createCall()
-        callId = id
+        sessionId = id
         val iceServers = emptyList<PeerConnection.IceServer>()
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
         rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -129,14 +133,14 @@ class DoorCall(
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         @Suppress("DEPRECATION")
         audioManager.isSpeakerphoneOn = true
-        audioManager.isMicrophoneMute = false
+        audioManager.isMicrophoneMute = !micEnabled
         val sourceConstraints = MediaConstraints().apply {
             optional.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
             optional.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
         }
         audioSource = factory.createAudioSource(sourceConstraints)
         audioTrack = factory.createAudioTrack("audio0", audioSource).also {
-            it.setEnabled(true)
+            it.setEnabled(micEnabled)
             it.setVolume(10.0)
         }
         peer?.addTrack(audioTrack)
@@ -154,9 +158,21 @@ class DoorCall(
         awaitSet { observer -> peer?.setRemoteDescription(observer, answer) }
     }
 
+    fun setMicEnabled(enabled: Boolean) {
+        micEnabled = enabled
+        audioTrack?.setEnabled(enabled)
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.isMicrophoneMute = !enabled
+        } catch (_: Exception) {
+        }
+    }
+
+    fun isMicEnabled(): Boolean = micEnabled
+
     fun hangup() {
-        val id = callId
-        callId = null
+        val id = sessionId
+        sessionId = null
         peer?.close()
         peer = null
         audioTrack?.dispose()

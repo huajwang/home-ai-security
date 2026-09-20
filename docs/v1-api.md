@@ -105,6 +105,10 @@ Media is DTLS-SRTP. The hub is the door peer (PC camera + mic + speakers).
 3. `POST /v1/calls/{id}/offer` `{ "sdp": "...", "type": "offer" }` → hub answer
 4. Optional trickle: `POST /v1/calls/{id}/ice`
 5. `DELETE /v1/calls/{id}` hang up
+6. `POST /v1/calls/{id}/photo` — save a JPEG of the live doorway frame (`label: photo`)
+7. `POST /v1/calls/{id}/clip/start` / `POST /v1/calls/{id}/clip/stop` — record a short MP4 (max 60s)
+
+`GET /v1/events/{id}/clip` returns the MP4 when the event has a clip.
 
 `POST /v1/calls/{id}/answer` exists if a future client wants the hub to offer.
 

@@ -18,90 +18,146 @@ import androidx.core.content.ContextCompat
 import com.homeai.security.shared.service.DismissDoorReceiver
 
 object DoorAlerts {
-    const val CHANNEL_ID = "doorbell_alert"
-    const val NOTICE_ID = 41
-    const val EXTRA_TITLE = "alert_title"
-    const val EXTRA_DETAIL = "alert_detail"
+    const val RING_CHANNEL_ID = "doorbell_ring"
+    const val PERSON_CHANNEL_ID = "person_notice_v2"
+    const val RING_ID = 41
+    const val PERSON_ID = 42
+    const val EXTRA_NOTICE_ID = "notice_id"
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.deleteNotificationChannel("doorbell")
+        listOf(
+            "doorbell",
+            "doorbell_alert",
+            "person_notice",
+            "person_notice_v3",
+            "person_notice_station_v1"
+        ).forEach { manager.deleteNotificationChannel(it) }
+
         val alarm = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
-        val channel = NotificationChannel(
-            CHANNEL_ID,
+        val ring = NotificationChannel(
+            RING_CHANNEL_ID,
             "Doorbell",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Someone pressed the doorbell"
+            description = "Doorbell button pressed"
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 400)
             setBypassDnd(true)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             setSound(Settings.System.DEFAULT_ALARM_ALERT_URI, alarm)
         }
-        manager.createNotificationChannel(channel)
+        val person = NotificationChannel(
+            PERSON_CHANNEL_ID,
+            "Person at door",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "A person was detected at the door"
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        manager.createNotificationChannel(ring)
+        manager.createNotificationChannel(person)
     }
 
-    fun ring(
+    fun ring(context: Context) {
+        post(
+            context,
+            channelId = RING_CHANNEL_ID,
+            noticeId = RING_ID,
+            title = "Front door",
+            detail = "Doorbell pressed",
+            sound = true
+        )
+    }
+
+    fun person(context: Context) {
+        post(
+            context,
+            channelId = PERSON_CHANNEL_ID,
+            noticeId = PERSON_ID,
+            title = "Front door",
+            detail = "Person detected",
+            sound = false
+        )
+    }
+
+    fun cancel(context: Context, noticeId: Int? = null) {
+        val manager = NotificationManagerCompat.from(context)
+        if (noticeId == null) {
+            manager.cancel(RING_ID)
+            manager.cancel(PERSON_ID)
+        } else {
+            manager.cancel(noticeId)
+        }
+    }
+
+    private fun post(
         context: Context,
-        title: String = "Front door",
-        detail: String = "Doorbell pressed. Talk or dismiss."
+        channelId: String,
+        noticeId: Int,
+        title: String,
+        detail: String,
+        sound: Boolean
     ) {
         ensureChannel(context)
-        Log.i("DoorAlerts", "ring $detail")
-        val incoming = Intent(context, IncomingDoorActivity::class.java).addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_NO_USER_ACTION
-        ).putExtra(EXTRA_TITLE, title).putExtra(EXTRA_DETAIL, detail)
-        val talk = Intent(context, CallActivity::class.java).addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        )
-        val incomingPi = pending(context, 1, incoming)
-        val talkPi = pending(context, 2, talk)
-        val dismissPi = PendingIntent.getBroadcast(
+        Log.i("DoorAlerts", "notify $detail sound=$sound")
+        val home = pending(
             context,
-            3,
-            Intent(context, DismissDoorReceiver::class.java),
+            noticeId,
+            Intent(context, HomeActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+        )
+        val talk = pending(
+            context,
+            noticeId + 100,
+            Intent(context, CallActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+        )
+        val dismiss = PendingIntent.getBroadcast(
+            context,
+            noticeId + 200,
+            Intent(context, DismissDoorReceiver::class.java).putExtra(EXTRA_NOTICE_ID, noticeId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val built = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
             .setContentText(detail)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setContentIntent(incomingPi)
-            .setFullScreenIntent(incomingPi, true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismissPi)
-            .addAction(android.R.drawable.ic_menu_call, "Talk", talkPi)
+            .setContentIntent(home)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismiss)
+            .addAction(android.R.drawable.ic_menu_call, "Talk", talk)
             .setAutoCancel(true)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setTimeoutAfter(60_000)
-            .build()
-        built.flags = built.flags or Notification.FLAG_INSISTENT
+        if (sound) {
+            builder.setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+        } else {
+            builder.setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setDefaults(0)
+        }
+        val built = builder.build()
+        if (sound) {
+            built.flags = built.flags or Notification.FLAG_INSISTENT
+        }
         if (Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
             == PackageManager.PERMISSION_GRANTED
         ) {
-            NotificationManagerCompat.from(context).notify(NOTICE_ID, built)
+            NotificationManagerCompat.from(context).notify(noticeId, built)
         } else {
             Log.w("DoorAlerts", "POST_NOTIFICATIONS denied")
         }
-        try {
-            context.startActivity(incoming)
-        } catch (ex: Exception) {
-            Log.w("DoorAlerts", "startActivity blocked: ${ex.message}")
-        }
-    }
-
-    fun cancel(context: Context) {
-        NotificationManagerCompat.from(context).cancel(NOTICE_ID)
     }
 
     private fun pending(context: Context, requestCode: Int, intent: Intent): PendingIntent {

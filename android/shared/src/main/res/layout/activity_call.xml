@@ -9,13 +9,53 @@
         android:id="@+id/remoteVideo"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginBottom="72dp" />
+        android:layout_marginBottom="88dp" />
 
-    <Button
-        android:id="@+id/hangup"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="16dp"
-        android:text="Hang up" />
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/photoButton"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_call_control"
+            android:contentDescription="Save photo"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_camera" />
+
+        <ImageButton
+            android:id="@+id/recordButton"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_call_control"
+            android:contentDescription="Record clip"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_videocam" />
+
+        <ImageButton
+            android:id="@+id/voiceToggle"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/bg_call_control"
+            android:contentDescription="Start voice"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_mic" />
+
+        <Button
+            android:id="@+id/hangup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hang up" />
+    </LinearLayout>
 </FrameLayout>

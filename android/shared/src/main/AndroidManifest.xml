@@ -9,19 +9,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application>
-        <activity
-            android:name="com.homeai.security.shared.ui.IncomingDoorActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:showWhenLocked="true"
-            android:taskAffinity=""
-            android:turnScreenOn="true" />
         <service
             android:name="com.homeai.security.shared.service.HubEventService"
             android:exported="false"
