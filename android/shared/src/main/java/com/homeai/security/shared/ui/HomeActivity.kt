@@ -1,8 +1,14 @@
 package com.homeai.security.shared.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageView
@@ -10,23 +16,26 @@ import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.homeai.security.shared.R
-import com.homeai.security.shared.api.EventSocket
 import com.homeai.security.shared.api.HubClient
 import com.homeai.security.shared.auth.SessionStore
 import com.homeai.security.shared.model.DoorEvent
+import com.homeai.security.shared.notify.HubEvents
+import com.homeai.security.shared.service.HubEventService
 import kotlin.concurrent.thread
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var store: SessionStore
     private lateinit var client: HubClient
-    private var socket: EventSocket? = null
     private val events = mutableListOf<String>()
     private val eventModels = mutableListOf<DoorEvent>()
     private lateinit var adapter: ArrayAdapter<String>
     private val stationMode: Boolean
         get() = packageName.endsWith(".station")
+    private val hubListener = HubEvents.Listener { runOnUiThread { refresh() } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,6 +46,15 @@ class HomeActivity : AppCompatActivity() {
             return
         }
         setContentView(if (stationMode) R.layout.activity_home_station else R.layout.activity_home_phone)
+        DoorAlerts.ensureChannel(this)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9)
+        }
+        askBatteryExemption()
+        HubEventService.start(this)
         client = HubClient(store)
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, events)
         findViewById<ListView>(R.id.events).adapter = adapter
@@ -73,18 +91,29 @@ class HomeActivity : AppCompatActivity() {
             }
         }
         refresh()
-        socket = EventSocket(client, onEvent = { payload ->
-            runOnUiThread {
-                Toast.makeText(this, payload.optString("type"), Toast.LENGTH_SHORT).show()
-                refresh()
-            }
-        }, onError = {})
-        socket?.connect()
     }
 
-    override fun onDestroy() {
-        socket?.close()
-        super.onDestroy()
+    override fun onStart() {
+        super.onStart()
+        HubEvents.addListener(hubListener)
+    }
+
+    override fun onStop() {
+        HubEvents.removeListener(hubListener)
+        super.onStop()
+    }
+
+    private fun askBatteryExemption() {
+        if (Build.VERSION.SDK_INT < 23) return
+        val power = getSystemService(PowerManager::class.java) ?: return
+        if (power.isIgnoringBatteryOptimizations(packageName)) return
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:$packageName"))
+            )
+        } catch (_: Exception) {
+        }
     }
 
     private fun act(block: () -> Any) {

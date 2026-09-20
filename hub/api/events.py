@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -66,14 +68,28 @@ async def event_stream(ws: WebSocket) -> None:
         return
     await ws.accept()
     bus = ws.app.state.bus
-    await bus.register(ws)
+    queue: asyncio.Queue[str] = asyncio.Queue(maxsize=32)
+    await bus.register(queue)
+    pump = asyncio.create_task(_pump(ws, queue))
     try:
+        await ws.send_text(json.dumps({"type": "subscribed"}))
         while True:
-            await ws.receive_text()
+            incoming = await ws.receive()
+            if incoming.get("type") == "websocket.disconnect":
+                break
     except WebSocketDisconnect:
         pass
     finally:
-        await bus.unregister(ws)
+        pump.cancel()
+        await bus.unregister(queue)
+
+
+async def _pump(ws: WebSocket, queue: asyncio.Queue[str]) -> None:
+    try:
+        while True:
+            await ws.send_text(await queue.get())
+    except Exception:
+        return
 
 
 def _bearer_from_headers(ws: WebSocket) -> str | None:

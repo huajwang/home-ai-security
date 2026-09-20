@@ -59,6 +59,27 @@ async def arm(
     return _system_body(services)
 
 
+@router.post("/ring")
+async def ring(
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    event = services["store"].add_event("doorbell", 1.0, None)
+    await services["bus"].publish(
+        {
+            "type": "doorbell_pressed",
+            "event": {
+                "id": event["id"],
+                "ts": event["ts"],
+                "label": event["label"],
+                "confidence": event["confidence"],
+                "snapshot_url": None,
+            },
+        }
+    )
+    return {"ok": True, "event_id": event["id"]}
+
+
 @router.post("/disarm")
 async def disarm(
     principal: dict[str, Any] = Depends(current_principal),

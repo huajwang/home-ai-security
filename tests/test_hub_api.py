@@ -6,6 +6,8 @@ import os
 
 os.environ["HUB_VISION_ENABLED"] = "0"
 os.environ["HUB_AUDIO_ENABLED"] = "0"
+os.environ["HUB_DOORBELL_ENABLED"] = "0"
+os.environ["HUB_CAMERA_URL"] = ""
 os.environ["HUB_DATA_DIR"] = os.path.join(os.path.dirname(__file__), "_tmp_data")
 os.environ["HUB_OWNER_USERNAME"] = "owner"
 os.environ["HUB_OWNER_PASSWORD"] = "changeme"

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from hub import config
 from hub.api import auth, calls, events, lock, system
 from hub.auth import bootstrap_owner
+from hub.devices.doorbell import DoorbellWorker
 from hub.devices.lock import build_lock_adapter
 from hub.errors import http_error_handler
 from hub.media.webrtc import CallManager
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
     bus = EventBus()
     lock_adapter = build_lock_adapter(store)
     vision = VisionWorker(store, state, bus)
+    doorbell = DoorbellWorker(store, bus, vision)
     calls_mgr = CallManager(vision)
 
     app.state.store = store
@@ -42,8 +44,11 @@ async def lifespan(app: FastAPI):
     app.state.login_limiter = RateLimiter(config.LOGIN_RATE_LIMIT)
     app.state.unlock_limiter = RateLimiter(config.UNLOCK_RATE_LIMIT)
 
-    vision.start(asyncio_loop())
+    loop = asyncio_loop()
+    vision.start(loop)
+    doorbell.start(loop)
     yield
+    doorbell.stop()
     vision.stop()
 
 

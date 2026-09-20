@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <TextView
+        android:id="@+id/incomingTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Front door"
+        android:textColor="#FFFFFF"
+        android:textSize="32sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/incomingDetail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Doorbell pressed"
+        android:textColor="#DDDDDD"
+        android:textSize="18sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="48dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/dismiss"
+            android:layout_width="0dp"
+            android:layout_height="72dp"
+            android:layout_marginEnd="12dp"
+            android:layout_weight="1"
+            android:text="Dismiss" />
+
+        <Button
+            android:id="@+id/talk"
+            android:layout_width="0dp"
+            android:layout_height="72dp"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="Talk" />
+    </LinearLayout>
+</LinearLayout>

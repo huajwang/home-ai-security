@@ -28,6 +28,14 @@ OWNER_PASSWORD = os.getenv("HUB_OWNER_PASSWORD", "changeme")
 VISION_ENABLED = os.getenv("HUB_VISION_ENABLED", "1") not in {"0", "false", "False"}
 VISION_DEBUG_WINDOW = os.getenv("HUB_VISION_DEBUG_WINDOW", "0") not in {"0", "false", "False"}
 CAMERA_INDEX = int(os.getenv("HUB_CAMERA_INDEX", "0"))
+# RTSP/HTTP URL wins over CAMERA_INDEX (Reolink: rtsp://user:pass@ip:554/h264Preview_01_sub).
+CAMERA_URL = os.getenv("HUB_CAMERA_URL", "").strip()
+DOORBELL_ENABLED = os.getenv("HUB_DOORBELL_ENABLED", "1" if CAMERA_URL else "0") not in {
+    "0",
+    "false",
+    "False",
+}
+ONVIF_PORT = int(os.getenv("HUB_ONVIF_PORT", "8000"))
 ALLOWED_LABELS = {
     item.strip()
     for item in os.getenv("HUB_ALLOWED_LABELS", "person").split(",")
