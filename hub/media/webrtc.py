@@ -17,6 +17,9 @@ from av import AudioFrame, VideoFrame
 from av.audio.resampler import AudioResampler
 
 from hub import config
+from hub.api.deps import event_payload
+from hub.devices.talkback import DoorTalkback, from_config as talkback_from_config
+from hub.media.clips import ClipRecorder
 from hub.vision.worker import VisionWorker
 
 try:
@@ -109,8 +112,43 @@ def _to_s16_mono(samples: np.ndarray) -> np.ndarray:
     return pcm
 
 
-async def _play_remote_audio(track: Any) -> None:
-    """Decode tablet audio and play it on the PC speakers."""
+async def _play_remote_audio(track: Any, session: CallSession) -> None:
+    """Decode tablet audio and play it on the doorbell speaker (PC speakers as fallback)."""
+    talk = talkback_from_config()
+    if talk is not None:
+        started = await asyncio.to_thread(talk.start)
+        if started:
+            session.talkback = talk
+            print(f"Call {session.id} playing audio on doorbell speaker")
+            try:
+                await _feed_talkback(track, talk)
+            finally:
+                talk.close()
+                session.talkback = None
+            return
+        talk.close()
+        print(f"Call {session.id} doorbell talkback unavailable; using PC speakers")
+    await _play_pc_speakers(track)
+
+
+async def _feed_talkback(track: Any, talk: DoorTalkback) -> None:
+    resampler = AudioResampler(format="s16", layout="mono", rate=8000)
+    first = True
+    try:
+        while True:
+            frame = await track.recv()
+            for converted in resampler.resample(frame):
+                pcm = _to_s16_mono(converted.to_ndarray())
+                if first:
+                    rms = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2))) if pcm.size else 0.0
+                    print(f"Doorbell talkback PCM samples={pcm.size} rms={rms:.1f}")
+                    first = False
+                talk.write_pcm8k(pcm)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Remote audio ended: {exc}")
+
+
+async def _play_pc_speakers(track: Any) -> None:
     if sd is None or not config.AUDIO_ENABLED:
         print("Remote audio skipped: sounddevice/audio disabled")
         return
@@ -202,12 +240,14 @@ class CallSession:
         self.remote_ready = False
         self.mic = None
         self.audio_playing = False
+        self.talkback = None
 
 
 class CallManager:
     def __init__(self, vision: VisionWorker) -> None:
         self.vision = vision
         self._calls: dict[str, CallSession] = {}
+        self.clips = ClipRecorder(vision)
 
     def create(self, user_id: int) -> CallSession:
         call_id = str(uuid.uuid4())
@@ -225,7 +265,7 @@ class CallManager:
                 return
             session.audio_playing = True
             print(f"Call {call_id} starting tablet playback")
-            session.tasks.append(asyncio.create_task(_play_remote_audio(track)))
+            session.tasks.append(asyncio.create_task(_play_remote_audio(track, session)))
 
         @pc.on("track")
         def on_track(track: Any) -> None:
@@ -293,10 +333,36 @@ class CallManager:
             ice.sdpMLineIndex = candidate.get("sdpMLineIndex")
             await session.pc.addIceCandidate(ice)
 
+    def save_photo(self) -> dict[str, Any]:
+        frame = self.vision.latest_bgr()
+        if frame is None:
+            raise LookupError("no_frame")
+        path = self.vision.save_snapshot(frame)
+        event = self.vision.store.add_event("photo", 1.0, path)
+        print(f"Photo event {event['id']}")
+        self.vision._publish({"type": "photo_saved", "event": event_payload(event)})
+        return event
+
+    def start_clip(self) -> None:
+        self.clips.start()
+        print("Clip recording started")
+
+    def stop_clip(self) -> dict[str, Any]:
+        clip, thumb = self.clips.stop()
+        event = self.vision.store.add_event("clip", 1.0, thumb, clip)
+        print(f"Clip event {event['id']}")
+        self.vision._publish({"type": "clip_saved", "event": event_payload(event)})
+        return event
+
     async def hangup(self, call_id: str) -> None:
         session = self._calls.pop(call_id, None)
         if session is None:
             return
+        if self.clips.recording() and not self._calls:
+            try:
+                self.stop_clip()
+            except Exception:
+                pass
         for task in session.tasks:
             task.cancel()
         if session.mic is not None:
@@ -304,5 +370,11 @@ class CallManager:
                 session.mic.stop()
             except Exception:
                 pass
+        if session.talkback is not None:
+            try:
+                session.talkback.close()
+            except Exception:
+                pass
+            session.talkback = None
         await session.pc.close()
 

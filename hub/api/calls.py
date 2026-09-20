@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from hub.api.deps import current_principal, get_services
+from hub.api.deps import current_principal, event_payload, get_services
 from hub.errors import raise_api
 
 router = APIRouter(prefix="/v1/calls", tags=["calls"])
@@ -89,3 +89,54 @@ async def hangup(
 ) -> dict[str, bool]:
     await services["calls"].hangup(call_id)
     return {"ok": True}
+
+
+@router.post("/{call_id}/photo")
+def save_photo(
+    call_id: str,
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    if services["calls"].get(call_id) is None:
+        raise_api(404, "not_found", "Call not found")
+    try:
+        event = services["calls"].save_photo()
+    except LookupError:
+        raise_api(409, "no_frame", "No camera frame yet")
+    return event_payload(event)
+
+
+@router.post("/{call_id}/clip/start")
+def start_clip(
+    call_id: str,
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    if services["calls"].get(call_id) is None:
+        raise_api(404, "not_found", "Call not found")
+    try:
+        services["calls"].start_clip()
+    except LookupError:
+        raise_api(409, "no_frame", "No camera frame yet")
+    except RuntimeError as exc:
+        if str(exc) == "already_recording":
+            raise_api(409, "already_recording", "Already recording")
+        raise_api(400, "record_error", str(exc))
+    return {"ok": True, "recording": True}
+
+
+@router.post("/{call_id}/clip/stop")
+def stop_clip(
+    call_id: str,
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    if services["calls"].get(call_id) is None:
+        raise_api(404, "not_found", "Call not found")
+    try:
+        event = services["calls"].stop_clip()
+    except LookupError:
+        raise_api(409, "no_clip", "Not recording")
+    except RuntimeError as exc:
+        raise_api(400, "record_error", str(exc))
+    return event_payload(event)

@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HUB_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("HUB_DATA_DIR", HUB_DIR / "data"))
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
+CLIP_DIR = DATA_DIR / "clips"
 DB_PATH = Path(os.getenv("HUB_DB_PATH", DATA_DIR / "hub.db"))
 CERT_DIR = Path(os.getenv("HUB_CERT_DIR", ROOT / "certs"))
 CERT_FILE = CERT_DIR / "hub.pem"
@@ -35,6 +36,11 @@ DOORBELL_ENABLED = os.getenv("HUB_DOORBELL_ENABLED", "1" if CAMERA_URL else "0")
     "false",
     "False",
 }
+TALKBACK_ENABLED = os.getenv("HUB_TALKBACK_ENABLED", "1" if CAMERA_URL else "0") not in {
+    "0",
+    "false",
+    "False",
+}
 ONVIF_PORT = int(os.getenv("HUB_ONVIF_PORT", "8000"))
 ALLOWED_LABELS = {
     item.strip()
@@ -57,6 +63,7 @@ AUDIO_ENABLED = os.getenv("HUB_AUDIO_ENABLED", "1") not in {"0", "false", "False
 AUDIO_SAMPLE_RATE = int(os.getenv("HUB_AUDIO_RATE", "48000"))
 WEBRTC_MAX_WIDTH = int(os.getenv("HUB_WEBRTC_MAX_WIDTH", "640"))
 WEBRTC_FPS = int(os.getenv("HUB_WEBRTC_FPS", "15"))
+CLIP_MAX_SECONDS = float(os.getenv("HUB_CLIP_MAX_SECONDS", "60"))
 
 LOGIN_RATE_LIMIT = int(os.getenv("HUB_LOGIN_RATE_LIMIT", "10"))
 UNLOCK_RATE_LIMIT = int(os.getenv("HUB_UNLOCK_RATE_LIMIT", "5"))
@@ -66,4 +73,5 @@ RATE_WINDOW_SECONDS = int(os.getenv("HUB_RATE_WINDOW", "60"))
 def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    CLIP_DIR.mkdir(parents=True, exist_ok=True)
     CERT_DIR.mkdir(parents=True, exist_ok=True)

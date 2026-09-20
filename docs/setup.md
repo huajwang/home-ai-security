@@ -33,6 +33,7 @@ Useful environment variables:
 | `HUB_CAMERA_INDEX` | Webcam index (ignored if `HUB_CAMERA_URL` is set) |
 | `HUB_CAMERA_URL` | RTSP/HTTP camera URL (Reolink sub-stream), e.g. `rtsp://user:pass@10.0.0.50:554/h264Preview_01_sub` |
 | `HUB_DOORBELL_ENABLED` | `0` to skip ONVIF doorbell-button listening |
+| `HUB_TALKBACK_ENABLED` | `0` to keep Talk audio on the PC speakers instead of the doorbell |
 | `HUB_ONVIF_PORT` | ONVIF port (default 8000) |
 
 Dev intercom probe (not the product UI): open `https://localhost:8443/dev/call` after trusting the cert.

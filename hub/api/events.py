@@ -55,6 +55,21 @@ def get_snapshot(
     return FileResponse(path, media_type="image/jpeg")
 
 
+@router.get("/v1/events/{event_id}/clip")
+def get_clip(
+    event_id: int,
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> FileResponse:
+    row = services["store"].get_event(event_id)
+    if row is None or not row.get("clip_path"):
+        raise_api(404, "not_found", "Clip not found")
+    path = Path(row["clip_path"])
+    if not path.is_file():
+        raise_api(404, "not_found", "Clip file missing")
+    return FileResponse(path, media_type="video/mp4")
+
+
 @router.websocket("/v1/stream/events")
 async def event_stream(ws: WebSocket) -> None:
     token = ws.query_params.get("access_token") or _bearer_from_headers(ws)

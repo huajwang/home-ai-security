@@ -99,11 +99,14 @@ class VisionWorker:
         if self.loop is not None:
             self.bus.publish_threadsafe(self.loop, payload)
 
-    def _save_snapshot(self, image: np.ndarray) -> str:
+    def save_snapshot(self, image: np.ndarray) -> str:
         filename = f"event_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
         path = Path(config.SNAPSHOT_DIR) / filename
         cv2.imwrite(str(path), image)
         return str(path)
+
+    def _save_snapshot(self, image: np.ndarray) -> str:
+        return self.save_snapshot(image)
 
     def _publish_live(self, frame: np.ndarray) -> None:
         rtc = _rtc_frame(frame)

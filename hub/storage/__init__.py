@@ -97,6 +97,9 @@ class Store:
                 );
                 """
             )
+            cols = {str(row["name"]) for row in cur.execute("PRAGMA table_info(events)").fetchall()}
+            if "clip_path" not in cols:
+                cur.execute("ALTER TABLE events ADD COLUMN clip_path TEXT")
 
     def get_kv(self, key: str) -> str | None:
         with self.cursor() as cur:
@@ -191,12 +194,18 @@ class Store:
         with self.cursor() as cur:
             cur.execute("UPDATE refresh_tokens SET revoked = 1 WHERE device_id = ?", (device_id,))
 
-    def add_event(self, label: str, confidence: float, snapshot_path: str | None) -> dict[str, Any]:
+    def add_event(
+        self,
+        label: str,
+        confidence: float,
+        snapshot_path: str | None,
+        clip_path: str | None = None,
+    ) -> dict[str, Any]:
         now = utcnow()
         with self.cursor() as cur:
             cur.execute(
-                "INSERT INTO events(ts, label, confidence, snapshot_path) VALUES(?,?,?,?)",
-                (now, label, confidence, snapshot_path),
+                "INSERT INTO events(ts, label, confidence, snapshot_path, clip_path) VALUES(?,?,?,?,?)",
+                (now, label, confidence, snapshot_path, clip_path),
             )
             event_id = cur.lastrowid
         return self.get_event(event_id)  # type: ignore[return-value]

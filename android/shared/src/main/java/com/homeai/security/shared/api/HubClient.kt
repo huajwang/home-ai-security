@@ -132,6 +132,18 @@ class HubClient(private val store: SessionStore) {
         request("DELETE", "/v1/calls/$callId")
     }
 
+    fun savePhoto(callId: String) {
+        request("POST", "/v1/calls/$callId/photo")
+    }
+
+    fun startClip(callId: String) {
+        request("POST", "/v1/calls/$callId/clip/start")
+    }
+
+    fun stopClip(callId: String) {
+        request("POST", "/v1/calls/$callId/clip/stop")
+    }
+
     fun wsUrl(): String {
         val base = store.hubBaseUrl.replace("https://", "wss://").replace("http://", "ws://")
         val token = store.accessToken().orEmpty()

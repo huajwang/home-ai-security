@@ -7,6 +7,7 @@ import os
 os.environ["HUB_VISION_ENABLED"] = "0"
 os.environ["HUB_AUDIO_ENABLED"] = "0"
 os.environ["HUB_DOORBELL_ENABLED"] = "0"
+os.environ["HUB_TALKBACK_ENABLED"] = "0"
 os.environ["HUB_CAMERA_URL"] = ""
 os.environ["HUB_DATA_DIR"] = os.path.join(os.path.dirname(__file__), "_tmp_data")
 os.environ["HUB_OWNER_USERNAME"] = "owner"
@@ -76,6 +77,13 @@ def test_create_and_hangup_call() -> None:
         call_id = created.json()["call_id"]
         hung = client.delete(f"/v1/calls/{call_id}", headers=headers)
         assert hung.status_code == 200
+        missing = client.post(f"/v1/calls/{call_id}/photo", headers=headers)
+        assert missing.status_code == 404
+        created = client.post("/v1/calls", headers=headers)
+        call_id = created.json()["call_id"]
+        photo = client.post(f"/v1/calls/{call_id}/photo", headers=headers)
+        assert photo.status_code == 409
+        assert photo.json()["code"] == "no_frame"
 
 
 def test_unlock_requires_confirm() -> None:

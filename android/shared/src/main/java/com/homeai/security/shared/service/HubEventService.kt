@@ -75,17 +75,9 @@ class HubEventService : Service() {
                 handler.post {
                     HubEvents.dispatch(type)
                     if (type == "doorbell_pressed") {
-                        DoorAlerts.ring(
-                            applicationContext,
-                            "Front door",
-                            "Doorbell pressed. Talk or dismiss."
-                        )
+                        DoorAlerts.ring(applicationContext)
                     } else if (type == "person_at_door") {
-                        DoorAlerts.ring(
-                            applicationContext,
-                            "Front door",
-                            "Person detected. Talk or dismiss."
-                        )
+                        DoorAlerts.person(applicationContext)
                     }
                 }
             },
@@ -116,7 +108,8 @@ class HubEventService : Service() {
             .setContentText("Listening for the doorbell")
             .setContentIntent(launch)
             .setOngoing(true)
-            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setGroup("hub_listen")
             .build()
     }
 
