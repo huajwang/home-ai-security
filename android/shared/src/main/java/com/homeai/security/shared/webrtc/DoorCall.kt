@@ -56,7 +56,10 @@ class DoorCall(
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
             .createPeerConnectionFactory()
         renderer.init(egl.eglBaseContext, null)
-        renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+        renderer.setScalingType(
+            RendererCommon.ScalingType.SCALE_ASPECT_FIT,
+            RendererCommon.ScalingType.SCALE_ASPECT_FIT
+        )
         renderer.setMirror(false)
     }
 

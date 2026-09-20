@@ -1,8 +1,9 @@
-"""Doorway YOLO loop ported from Week 5 Program 20."""
+"""Doorway capture + YOLO. Live Talk frames are not gated on inference."""
 
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 import time
 from datetime import datetime
@@ -17,6 +18,38 @@ from hub.state import HubState
 from hub.storage import Store
 
 
+def _safe_source(source: str | int) -> str:
+    text = str(source)
+    if "://" in text and "@" in text:
+        scheme, rest = text.split("://", 1)
+        host = rest.rsplit("@", 1)[-1]
+        return f"{scheme}://***@{host}"
+    return text
+
+
+def _open_camera(source: str | int) -> cv2.VideoCapture:
+    if isinstance(source, str) and source.lower().startswith("rtsp"):
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+            "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;0"
+        )
+        camera = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return camera
+    return cv2.VideoCapture(source)
+
+
+def _rtc_frame(frame: np.ndarray) -> np.ndarray:
+    width = frame.shape[1]
+    if width > config.WEBRTC_MAX_WIDTH:
+        scale = config.WEBRTC_MAX_WIDTH / width
+        return cv2.resize(
+            frame,
+            (config.WEBRTC_MAX_WIDTH, max(1, int(frame.shape[0] * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    return frame.copy()
+
+
 class VisionWorker:
     def __init__(self, store: Store, state: HubState, bus: EventBus) -> None:
         self.store = store
@@ -24,10 +57,13 @@ class VisionWorker:
         self.bus = bus
         self.loop: asyncio.AbstractEventLoop | None = None
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._capture_thread: threading.Thread | None = None
+        self._detect_thread: threading.Thread | None = None
         self._frame_lock = threading.Lock()
+        self._latest_raw: np.ndarray | None = None
         self._latest_bgr: np.ndarray | None = None
         self._latest_rtc: np.ndarray | None = None
+        self._frame_id = 0
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
@@ -35,13 +71,16 @@ class VisionWorker:
             self.state.vision_error = "Vision disabled (HUB_VISION_ENABLED=0)"
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="vision-worker", daemon=True)
-        self._thread.start()
+        self._capture_thread = threading.Thread(target=self._capture_loop, name="vision-capture", daemon=True)
+        self._detect_thread = threading.Thread(target=self._detect_loop, name="vision-detect", daemon=True)
+        self._capture_thread.start()
+        self._detect_thread.start()
 
     def stop(self) -> None:
         self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=4)
+        for thread in (self._capture_thread, self._detect_thread):
+            if thread is not None:
+                thread.join(timeout=4)
 
     def latest_bgr(self) -> np.ndarray | None:
         with self._frame_lock:
@@ -66,19 +105,71 @@ class VisionWorker:
         cv2.imwrite(str(path), image)
         return str(path)
 
-    def _run(self) -> None:
+    def _publish_live(self, frame: np.ndarray) -> None:
+        rtc = _rtc_frame(frame)
+        raw = frame.copy()
+        with self._frame_lock:
+            self._latest_raw = raw
+            self._latest_rtc = rtc
+            self._frame_id += 1
+
+    def _newest_raw(self, last_id: int) -> tuple[int, np.ndarray | None]:
+        with self._frame_lock:
+            if self._latest_raw is None or self._frame_id == last_id:
+                return last_id, None
+            return self._frame_id, self._latest_raw.copy()
+
+    def _capture_loop(self) -> None:
         config.ensure_dirs()
-        camera = cv2.VideoCapture(config.CAMERA_INDEX)
+        source: str | int = config.CAMERA_URL or config.CAMERA_INDEX
+        camera = _open_camera(source)
         if not camera.isOpened():
             self.state.vision_running = False
-            self.state.vision_error = f"Could not open camera index {config.CAMERA_INDEX}"
+            self.state.vision_error = f"Could not open camera {_safe_source(source)}"
             print(f"ERROR: {self.state.vision_error}")
             return
+        print(f"Vision opened camera {_safe_source(source)}")
+        self.state.vision_running = True
+        fail_streak = 0
+        fps_t0 = time.time()
+        fps_n = 0
 
+        while not self._stop.is_set():
+            success, frame = camera.read()
+            if not success or frame is None:
+                fail_streak += 1
+                self.state.vision_error = "Could not read a camera frame"
+                if fail_streak >= 3:
+                    print(f"Vision reconnecting {_safe_source(source)}")
+                    camera.release()
+                    time.sleep(0.4)
+                    camera = _open_camera(source)
+                    fail_streak = 0
+                    if not camera.isOpened():
+                        self.state.vision_error = f"Could not reopen camera {_safe_source(source)}"
+                        time.sleep(1.0)
+                else:
+                    time.sleep(0.05)
+                continue
+            fail_streak = 0
+            if self.state.vision_error == "Could not read a camera frame":
+                self.state.vision_error = None
+            self._publish_live(frame)
+            fps_n += 1
+            elapsed = time.time() - fps_t0
+            if elapsed >= 1.0:
+                self.state.vision_fps = fps_n / elapsed
+                fps_n = 0
+                fps_t0 = time.time()
+
+        camera.release()
+        self.state.vision_running = False
+        print("Vision capture stopped.")
+
+    def _detect_loop(self) -> None:
         try:
             from ultralytics import YOLO
         except ImportError as exc:
-            camera.release()
             self.state.vision_error = f"ultralytics not installed: {exc}"
             print(f"ERROR: {self.state.vision_error}")
             return
@@ -87,25 +178,21 @@ class VisionWorker:
         try:
             model = YOLO(config.YOLO_MODEL)
         except Exception as exc:  # noqa: BLE001
-            camera.release()
             self.state.vision_error = f"Could not load YOLO: {exc}"
             print(f"ERROR: {self.state.vision_error}")
             return
 
-        self.state.vision_running = True
-        self.state.vision_error = None
+        print(f"Vision watching for: {sorted(config.ALLOWED_LABELS)}")
         person_streak = 0
         last_alarm_time = 0.0
-        fps_t0 = time.time()
-        fps_n = 0
+        visit_notified = False
+        last_id = -1
         roi_x1, roi_y1, roi_x2, roi_y2 = config.ROI
-        print(f"Vision watching for: {sorted(config.ALLOWED_LABELS)}")
 
         while not self._stop.is_set():
-            success, frame = camera.read()
-            if not success:
-                self.state.vision_error = "Could not read a camera frame"
-                time.sleep(0.2)
+            last_id, frame = self._newest_raw(last_id)
+            if frame is None:
+                time.sleep(0.01)
                 continue
 
             results = model(frame, verbose=False)
@@ -155,17 +242,19 @@ class VisionWorker:
             now = time.time()
             snap = self.state.snapshot()
 
-            if snap["armed"] and target_confirmed and not snap["alarm_active"]:
+            if target_confirmed and not visit_notified:
                 if now - last_alarm_time >= config.ALARM_COOLDOWN_SECONDS:
+                    visit_notified = True
                     last_alarm_time = now
-                    self.state.set_alarm(True)
+                    if snap["armed"]:
+                        self.state.set_alarm(True)
                     snapshot_path = self._save_snapshot(display)
                     event = self.store.add_event(
                         next(iter(config.ALLOWED_LABELS), "person"),
                         best_conf,
                         snapshot_path,
                     )
-                    print(f"ALERT event {event['id']} confidence={best_conf:.2f}")
+                    print(f"Person event {event['id']} confidence={best_conf:.2f}")
                     self._publish(
                         {
                             "type": "person_at_door",
@@ -179,8 +268,9 @@ class VisionWorker:
                         }
                     )
 
-            if snap["alarm_active"] and not target_confirmed:
-                if self.state.set_alarm(False):
+            if not target_confirmed:
+                visit_notified = False
+                if snap["alarm_active"] and self.state.set_alarm(False):
                     print("Target gone → alarm cleared")
                     self._publish({"type": "alarm_cleared"})
 
@@ -203,34 +293,14 @@ class VisionWorker:
                 (255, 255, 255),
                 2,
             )
-
-            rtc = display
-            width = display.shape[1]
-            if width > config.WEBRTC_MAX_WIDTH:
-                scale = config.WEBRTC_MAX_WIDTH / width
-                rtc = cv2.resize(
-                    display,
-                    (config.WEBRTC_MAX_WIDTH, max(1, int(display.shape[0] * scale))),
-                    interpolation=cv2.INTER_AREA,
-                )
             with self._frame_lock:
                 self._latest_bgr = display
-                self._latest_rtc = rtc
-
-            fps_n += 1
-            elapsed = time.time() - fps_t0
-            if elapsed >= 1.0:
-                self.state.vision_fps = fps_n / elapsed
-                fps_n = 0
-                fps_t0 = time.time()
 
             if config.VISION_DEBUG_WINDOW:
                 cv2.imshow("Home Hub vision (debug)", display)
                 if cv2.waitKey(1) & 0xFF in {ord("q"), ord("Q")}:
                     break
 
-        camera.release()
         if config.VISION_DEBUG_WINDOW:
             cv2.destroyAllWindows()
-        self.state.vision_running = False
-        print("Vision worker stopped.")
+        print("Vision detect stopped.")
