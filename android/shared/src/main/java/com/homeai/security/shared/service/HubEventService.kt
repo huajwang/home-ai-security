@@ -78,6 +78,8 @@ class HubEventService : Service() {
                         DoorAlerts.ring(applicationContext)
                     } else if (type == "person_at_door") {
                         DoorAlerts.person(applicationContext)
+                    } else if (type == "person_at_driveway") {
+                        DoorAlerts.driveway(applicationContext)
                     }
                 }
             },

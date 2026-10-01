@@ -8,6 +8,7 @@ import com.homeai.security.shared.model.LockStatus
 import com.homeai.security.shared.model.Session
 import com.homeai.security.shared.model.SystemStatus
 import com.homeai.security.shared.model.User
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,6 +22,12 @@ class HubClient(private val store: SessionStore) {
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val http = HubTls.apply(
         OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS)
+    ).build()
+    private val streamHttp = HubTls.apply(
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
     ).build()
 
     fun login(username: String, password: String, deviceName: String, deviceRole: String): Session {
@@ -82,6 +89,16 @@ class HubClient(private val store: SessionStore) {
 
     fun snapshotUrl(relative: String): String = store.hubBaseUrl + relative
 
+    fun drivewayStream(): Call {
+        val token = store.accessToken() ?: throw HubException("unauthorized", "Not signed in")
+        val request = Request.Builder()
+            .url(store.hubBaseUrl + "/v1/driveway/stream")
+            .header("Authorization", "Bearer $token")
+            .get()
+            .build()
+        return streamHttp.newCall(request)
+    }
+
     fun snapshotBytes(relative: String): ByteArray {
         val token = store.accessToken() ?: throw HubException("unauthorized", "Not signed in")
         val request = Request.Builder()
@@ -111,6 +128,24 @@ class HubClient(private val store: SessionStore) {
         val body = JSONObject().put("confirm", true)
         val obj = request("POST", "/v1/lock/unlock", body)
         return LockStatus(obj.getString("state"), obj.optString("updated_at"), obj.optString("adapter"))
+    }
+
+    fun lightOn(): String {
+        val obj = request("POST", "/v1/lights/on")
+        return "Light ${obj.optString("state", "on")}"
+    }
+
+    fun lightOff(): String {
+        val obj = request("POST", "/v1/lights/off")
+        return "Light ${obj.optString("state", "off")}"
+    }
+
+    fun pairBulb(): String {
+        return request("POST", "/v1/lights/pair").optString("message", "Bulb pairing started")
+    }
+
+    fun pairLock(): String {
+        return request("POST", "/v1/lock/pair").optString("message", "Lock pairing started")
     }
 
     fun createCall(): String = request("POST", "/v1/calls").getString("call_id")

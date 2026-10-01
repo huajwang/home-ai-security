@@ -1,0 +1,8 @@
+{
+  "name": "home-ai-zwave",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "zwave-js": "^15.3.0"
+  }
+}

@@ -72,6 +72,51 @@
             android:text="Lock" />
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/lightOn"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:text="Light on" />
+
+        <Button
+            android:id="@+id/lightOff"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="Light off" />
+
+        <Button
+            android:id="@+id/pairBulb"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="Pair bulb" />
+
+        <Button
+            android:id="@+id/pairLock"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="Pair lock" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/driveway"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="12dp"
+        android:text="Driveway" />
+
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

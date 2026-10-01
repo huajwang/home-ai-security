@@ -31,6 +31,9 @@ VISION_DEBUG_WINDOW = os.getenv("HUB_VISION_DEBUG_WINDOW", "0") not in {"0", "fa
 CAMERA_INDEX = int(os.getenv("HUB_CAMERA_INDEX", "0"))
 # RTSP/HTTP URL wins over CAMERA_INDEX (Reolink: rtsp://user:pass@ip:554/h264Preview_01_sub).
 CAMERA_URL = os.getenv("HUB_CAMERA_URL", "").strip()
+# USB webcam for a second camera, such as the driveway. Empty leaves it off.
+# "0" is /dev/video0. A path such as /dev/video0 is also accepted.
+DRIVEWAY_CAMERA = os.getenv("HUB_DRIVEWAY_CAMERA", "").strip()
 DOORBELL_ENABLED = os.getenv("HUB_DOORBELL_ENABLED", "1" if CAMERA_URL else "0") not in {
     "0",
     "false",
@@ -64,6 +67,13 @@ AUDIO_SAMPLE_RATE = int(os.getenv("HUB_AUDIO_RATE", "48000"))
 WEBRTC_MAX_WIDTH = int(os.getenv("HUB_WEBRTC_MAX_WIDTH", "640"))
 WEBRTC_FPS = int(os.getenv("HUB_WEBRTC_FPS", "15"))
 CLIP_MAX_SECONDS = float(os.getenv("HUB_CLIP_MAX_SECONDS", "60"))
+
+# CH340 Zigbee coordinator (ZNP). Empty disables the bulb controller.
+ZIGBEE_DEVICE = os.getenv("HUB_ZIGBEE_DEVICE", "").strip()
+ZIGBEE_BAUD = int(os.getenv("HUB_ZIGBEE_BAUD", "115200"))
+# Zooz Z-Wave stick. Empty keeps the in-memory stub lock.
+ZWAVE_DEVICE = os.getenv("HUB_ZWAVE_DEVICE", "").strip()
+ZWAVE_URL = os.getenv("HUB_ZWAVE_URL", "http://127.0.0.1:3091").strip()
 
 LOGIN_RATE_LIMIT = int(os.getenv("HUB_LOGIN_RATE_LIMIT", "10"))
 UNLOCK_RATE_LIMIT = int(os.getenv("HUB_UNLOCK_RATE_LIMIT", "5"))

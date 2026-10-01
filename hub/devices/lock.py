@@ -84,5 +84,11 @@ class StubLockAdapter:
 
 
 def build_lock_adapter(store: Store) -> LockAdapter:
-    """Swap this factory when a certified lock is available."""
+    """Use the Zooz stick when HUB_ZWAVE_DEVICE is set, otherwise the stub."""
+    from hub import config
+
+    if config.ZWAVE_DEVICE:
+        from hub.devices.zwave_lock import ZwaveLockAdapter
+
+        return ZwaveLockAdapter(store)
     return StubLockAdapter(store)

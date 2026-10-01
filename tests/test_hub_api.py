@@ -9,6 +9,7 @@ os.environ["HUB_AUDIO_ENABLED"] = "0"
 os.environ["HUB_DOORBELL_ENABLED"] = "0"
 os.environ["HUB_TALKBACK_ENABLED"] = "0"
 os.environ["HUB_CAMERA_URL"] = ""
+os.environ["HUB_DRIVEWAY_CAMERA"] = ""
 os.environ["HUB_DATA_DIR"] = os.path.join(os.path.dirname(__file__), "_tmp_data")
 os.environ["HUB_OWNER_USERNAME"] = "owner"
 os.environ["HUB_OWNER_PASSWORD"] = "changeme"
@@ -30,6 +31,17 @@ def _login(client: TestClient, role: str = "phone") -> dict:
     )
     assert res.status_code == 200, res.text
     return res.json()
+
+
+def test_driveway_disabled_without_webcam() -> None:
+    with TestClient(create_app()) as client:
+        headers = {"Authorization": f"Bearer {_login(client)['access_token']}"}
+        status = client.get("/v1/driveway", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["enabled"] is False
+        snap = client.get("/v1/driveway/snapshot", headers=headers)
+        assert snap.status_code == 409
+        assert snap.json()["code"] == "no_frame"
 
 
 def test_unauthenticated_system() -> None:
@@ -84,6 +96,18 @@ def test_create_and_hangup_call() -> None:
         photo = client.post(f"/v1/calls/{call_id}/photo", headers=headers)
         assert photo.status_code == 409
         assert photo.json()["code"] == "no_frame"
+
+
+def test_lights_disabled_without_dongle() -> None:
+    with TestClient(create_app()) as client:
+        tokens = _login(client)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+        listed = client.get("/v1/lights", headers=headers)
+        assert listed.status_code == 200
+        assert listed.json()["enabled"] is False
+        turned = client.post("/v1/lights/on", headers=headers, json={})
+        assert turned.status_code == 409
+        assert turned.json()["code"] == "no_light"
 
 
 def test_unlock_requires_confirm() -> None:

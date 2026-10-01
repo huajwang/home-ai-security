@@ -16,6 +16,7 @@ import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import java.io.ByteArrayOutputStream
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -28,6 +29,8 @@ import com.homeai.security.shared.service.HubEventService
 import kotlin.concurrent.thread
 
 class HomeActivity : AppCompatActivity() {
+    private val jpegStart = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
+    private val jpegEnd = byteArrayOf(0xFF.toByte(), 0xD9.toByte())
     private lateinit var store: SessionStore
     private lateinit var client: HubClient
     private val events = mutableListOf<String>()
@@ -85,6 +88,11 @@ class HomeActivity : AppCompatActivity() {
         findViewById<Button>(R.id.arm).setOnClickListener { act { client.arm() } }
         findViewById<Button>(R.id.disarm).setOnClickListener { act { client.disarm() } }
         findViewById<Button>(R.id.lockDoor).setOnClickListener { act { client.lockDoor() } }
+        findViewById<Button>(R.id.lightOn).setOnClickListener { act { client.lightOn() } }
+        findViewById<Button>(R.id.lightOff).setOnClickListener { act { client.lightOff() } }
+        findViewById<Button>(R.id.pairBulb).setOnClickListener { act { client.pairBulb() } }
+        findViewById<Button>(R.id.pairLock).setOnClickListener { act { client.pairLock() } }
+        findViewById<Button>(R.id.driveway).setOnClickListener { showDriveway() }
         findViewById<Button>(R.id.unlock).setOnClickListener {
             UnlockHelper.confirm(this, store, preferBiometric = !stationMode) {
                 act { client.unlockDoor() }
@@ -116,11 +124,82 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    private fun showDriveway() {
+        val image = ImageView(this).apply {
+            adjustViewBounds = true
+            minimumHeight = 480
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Driveway")
+            .setView(image)
+            .setPositiveButton("Close", null)
+            .create()
+        val call = client.drivewayStream()
+        dialog.setOnDismissListener { call.cancel() }
+        dialog.show()
+        thread {
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException("Driveway stream is not available")
+                    }
+                    val source = response.body?.byteStream() ?: return@use
+                    val pending = ByteArrayOutputStream()
+                    val chunk = ByteArray(8192)
+                    while (true) {
+                        val read = source.read(chunk)
+                        if (read < 0) break
+                        pending.write(chunk, 0, read)
+                        val data = pending.toByteArray()
+                        val start = indexOf(data, jpegStart)
+                        if (start < 0) {
+                            if (data.size > 2_000_000) pending.reset()
+                            continue
+                        }
+                        val end = indexOf(data, jpegEnd, start + 2)
+                        if (end < 0) continue
+                        val jpeg = data.copyOfRange(start, end + 2)
+                        val rest = data.copyOfRange(end + 2, data.size)
+                        pending.reset()
+                        pending.write(rest)
+                        val bitmap = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: continue
+                        runOnUiThread { image.setImageBitmap(bitmap) }
+                    }
+                }
+            } catch (ex: Exception) {
+                if (!call.isCanceled()) {
+                    runOnUiThread { Toast.makeText(this, ex.message, Toast.LENGTH_LONG).show() }
+                }
+            }
+        }
+    }
+
+    private fun indexOf(data: ByteArray, marker: ByteArray, from: Int = 0): Int {
+        if (marker.isEmpty() || data.size < from + marker.size) return -1
+        val last = data.size - marker.size
+        for (i in from..last) {
+            var matched = true
+            for (j in marker.indices) {
+                if (data[i + j] != marker[j]) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) return i
+        }
+        return -1
+    }
+
     private fun act(block: () -> Any) {
         thread {
             try {
-                block()
-                runOnUiThread { refresh() }
+                val result = block()
+                runOnUiThread {
+                    if (result is String && result.isNotBlank()) {
+                        Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+                    }
+                    refresh()
+                }
             } catch (ex: Exception) {
                 runOnUiThread { Toast.makeText(this, ex.message, Toast.LENGTH_LONG).show() }
             }
