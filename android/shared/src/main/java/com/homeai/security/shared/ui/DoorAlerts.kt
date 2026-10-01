@@ -76,6 +76,18 @@ object DoorAlerts {
         )
     }
 
+    fun driveway(context: Context) {
+        post(
+            context,
+            channelId = PERSON_CHANNEL_ID,
+            noticeId = 43,
+            title = "Driveway",
+            detail = "Person detected",
+            sound = false,
+            talk = false
+        )
+    }
+
     fun person(context: Context) {
         post(
             context,
@@ -103,7 +115,8 @@ object DoorAlerts {
         noticeId: Int,
         title: String,
         detail: String,
-        sound: Boolean
+        sound: Boolean,
+        talk: Boolean = true
     ) {
         ensureChannel(context)
         Log.i("DoorAlerts", "notify $detail sound=$sound")
@@ -114,7 +127,7 @@ object DoorAlerts {
                 Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             )
         )
-        val talk = pending(
+        val talkIntent = pending(
             context,
             noticeId + 100,
             Intent(context, CallActivity::class.java).addFlags(
@@ -134,9 +147,11 @@ object DoorAlerts {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(home)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismiss)
-            .addAction(android.R.drawable.ic_menu_call, "Talk", talk)
             .setAutoCancel(true)
             .setTimeoutAfter(60_000)
+        if (talk) {
+            builder.addAction(android.R.drawable.ic_menu_call, "Talk", talkIntent)
+        }
         if (sound) {
             builder.setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)

@@ -83,10 +83,12 @@ class VisionWorker:
                 thread.join(timeout=4)
 
     def latest_bgr(self) -> np.ndarray | None:
+        """Annotated frame when detection is running, otherwise the live capture."""
         with self._frame_lock:
-            if self._latest_bgr is None:
+            frame = self._latest_bgr if self._latest_bgr is not None else self._latest_raw
+            if frame is None:
                 return None
-            return self._latest_bgr.copy()
+            return frame.copy()
 
     def latest_webrtc_bgr(self) -> np.ndarray | None:
         """Smaller copy for software VP8 encode. Safe to hold without the lock."""

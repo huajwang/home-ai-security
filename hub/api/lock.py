@@ -18,6 +18,10 @@ class UnlockBody(BaseModel):
     reason: str | None = None
 
 
+class PinBody(BaseModel):
+    pin: str
+
+
 def _lock_body(services: dict[str, Any], extra: dict[str, Any] | None = None) -> dict[str, Any]:
     lock = services["lock"]
     body = {
@@ -27,7 +31,18 @@ def _lock_body(services: dict[str, Any], extra: dict[str, Any] | None = None) ->
     }
     if extra:
         body.update(extra)
+    pairing = getattr(lock, "pairing", None)
+    if pairing is not None:
+        body["pairing"] = pairing()
     return body
+
+
+def _raise_if_failed(result: Any, already: str, code: str, message: str) -> None:
+    if result.success:
+        return
+    if result.message == already:
+        raise_api(409, code, message)
+    raise_api(502, "lock_failed", result.message)
 
 
 @router.get("")
@@ -52,8 +67,7 @@ async def lock_door(
             "action": "lock",
         }
     )
-    if not result.success and result.message == "already locked":
-        raise_api(409, "already_locked", "Door is already locked")
+    _raise_if_failed(result, "already locked", "already_locked", "Door is already locked")
     return _lock_body(services)
 
 
@@ -86,9 +100,37 @@ async def unlock_door(
             "action": "unlock",
         }
     )
-    if not result.success and result.message == "already unlocked":
-        raise_api(409, "already_unlocked", "Door is already unlocked")
+    _raise_if_failed(result, "already unlocked", "already_unlocked", "Door is already unlocked")
     return _lock_body(services, {"audit": audit})
+
+
+@router.post("/pair")
+def pair_lock(
+    _: dict[str, Any] = Depends(require_unlock),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    start = getattr(services["lock"], "start_inclusion", None)
+    if start is None:
+        raise_api(409, "not_available", "Z-Wave stick is not configured")
+    result = start()
+    if not result.success:
+        raise_api(502, "pair_failed", result.message)
+    return {"ok": True, "message": result.message}
+
+
+@router.post("/pair/pin")
+def pair_pin(
+    body: PinBody,
+    _: dict[str, Any] = Depends(require_unlock),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    submit = getattr(services["lock"], "submit_pin", None)
+    if submit is None:
+        raise_api(409, "not_available", "Z-Wave stick is not configured")
+    result = submit(body.pin.strip())
+    if not result.success:
+        raise_api(502, "pair_failed", result.message)
+    return {"ok": True, "message": result.message}
 
 
 @router.get("/audit")
