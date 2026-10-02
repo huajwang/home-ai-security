@@ -12,6 +12,7 @@ import numpy as np
 from hub import config
 from hub.notify import EventBus
 from hub.storage import Store
+from hub.vision.people import shared_detector
 from hub.vision.worker import _open_camera, _safe_source
 
 
@@ -156,12 +157,7 @@ class DrivewayCamera:
 
     def _detect_loop(self) -> None:
         try:
-            from ultralytics import YOLO
-        except ImportError as exc:
-            print(f"Driveway detection idle: {exc}")
-            return
-        try:
-            model = YOLO(config.YOLO_MODEL)
+            detector = shared_detector()
         except Exception as exc:  # noqa: BLE001
             print(f"Driveway detection idle: {exc}")
             return
@@ -180,23 +176,16 @@ class DrivewayCamera:
             if frame is None:
                 time.sleep(0.05)
                 continue
-            results = model(frame, verbose=False)
-            result = results[0]
-            names = result.names
-            boxes = result.boxes
+            detections = detector.detect(frame)
             count = 0
             best = 0.0
             display = frame.copy()
-            if boxes is not None:
-                for box in boxes:
-                    label = names[int(box.cls[0])]
-                    confidence = float(box.conf[0])
-                    if label not in config.ALLOWED_LABELS or confidence < config.CONFIDENCE_THRESHOLD:
-                        continue
-                    count += 1
-                    best = max(best, confidence)
-                    x1, y1, x2, y2 = (int(v) for v in box.xyxy[0])
-                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            for label, confidence, x1, y1, x2, y2 in detections:
+                if label not in config.ALLOWED_LABELS or confidence < config.CONFIDENCE_THRESHOLD:
+                    continue
+                count += 1
+                best = max(best, confidence)
+                cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
             with self._lock:
                 self._frame = display
             if count > 0:

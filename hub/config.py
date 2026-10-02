@@ -68,6 +68,8 @@ ROI = (
     int(os.getenv("HUB_ROI_Y2", "360")),
 )
 YOLO_MODEL = os.getenv("HUB_YOLO_MODEL", "yolov8n.pt")
+# Empty uses the RK3588 model installed with the NPU package, when that file exists.
+NPU_MODEL = os.getenv("HUB_NPU_MODEL", "").strip()
 
 AUDIO_ENABLED = os.getenv("HUB_AUDIO_ENABLED", "1") not in {"0", "false", "False"}
 AUDIO_SAMPLE_RATE = int(os.getenv("HUB_AUDIO_RATE", "48000"))
