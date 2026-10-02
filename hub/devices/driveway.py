@@ -70,6 +70,9 @@ class DrivewayCamera:
             "error": self._error,
         }
 
+    def latest_bgr(self) -> np.ndarray | None:
+        return self._copy_frame()
+
     def jpeg(self) -> bytes | None:
         frame = self._copy_frame()
         if frame is None:

@@ -34,6 +34,13 @@ CAMERA_URL = os.getenv("HUB_CAMERA_URL", "").strip()
 # USB webcam for a second camera, such as the driveway. Empty leaves it off.
 # "0" is /dev/video0. A path such as /dev/video0 is also accepted.
 DRIVEWAY_CAMERA = os.getenv("HUB_DRIVEWAY_CAMERA", "").strip()
+# Publish frames for the HDMI camera screen. The screen process is separate.
+MONITOR_ENABLED = os.getenv("HUB_MONITOR", "0") not in {"0", "false", "False"}
+MONITOR_DIR = Path(os.getenv("HUB_MONITOR_DIR", "/dev/shm/home-ai-wall"))
+# A webcam on another computer can send frames to the monitor.
+PC_CAMERA_ENABLED = os.getenv("HUB_PC_CAMERA", "0") not in {"0", "false", "False"}
+PC_CAMERA_PORT = int(os.getenv("HUB_PC_CAMERA_PORT", "8091"))
+PC_CAMERA_LABEL = os.getenv("HUB_PC_CAMERA_LABEL", "This PC")
 DOORBELL_ENABLED = os.getenv("HUB_DOORBELL_ENABLED", "1" if CAMERA_URL else "0") not in {
     "0",
     "false",
