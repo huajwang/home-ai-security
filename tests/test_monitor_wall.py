@@ -23,6 +23,27 @@ def test_three_cameras_sit_in_one_row() -> None:
     assert wall.shape == (90, 300, 3)
 
 
+def test_letterbox_round_trip_keeps_a_point() -> None:
+    from hub.vision.people import _letterbox, _unmap_box
+
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    _canvas, scale, pad_x, pad_y = _letterbox(frame, 640)
+    # A point in the middle of the original frame lands back on itself.
+    mid_x = 320 * scale + pad_x
+    mid_y = 240 * scale + pad_y
+    x1, y1, x2, y2 = _unmap_box(
+        np.array([mid_x, mid_y, mid_x + scale, mid_y + scale]),
+        scale,
+        pad_x,
+        pad_y,
+        640,
+        480,
+    )
+    assert abs(x1 - 320) <= 1
+    assert abs(y1 - 240) <= 1
+    assert x2 > x1 and y2 > y1
+
+
 def test_missing_frame_still_reserves_a_tile() -> None:
     wall = compose_wall([("Front door", None)], 80, 60)
     assert wall.shape == (60, 80, 3)

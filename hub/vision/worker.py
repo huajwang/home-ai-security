@@ -16,6 +16,7 @@ from hub import config
 from hub.notify import EventBus
 from hub.state import HubState
 from hub.storage import Store
+from hub.vision.people import shared_detector
 
 
 def _safe_source(source: str | int) -> str:
@@ -27,14 +28,25 @@ def _safe_source(source: str | int) -> str:
     return text
 
 
-def _open_camera(source: str | int) -> cv2.VideoCapture:
+def _open_camera(source: str | int):
     if isinstance(source, str) and source.lower().startswith("rtsp"):
+        try:
+            from hub.vision.decode import MppCapture
+
+            camera = MppCapture(source)
+            if camera.isOpened():
+                print(f"Hardware decoder opened {_safe_source(source)}")
+                return camera
+            camera.release()
+        except Exception as exc:  # noqa: BLE001
+            print(f"Hardware decoder idle: {exc}")
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
             "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;0"
         )
-        camera = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
-        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        return camera
+        software = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+        software.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        print(f"Software decoder opened {_safe_source(source)}")
+        return software
     return cv2.VideoCapture(source)
 
 
@@ -144,7 +156,7 @@ class VisionWorker:
             if not success or frame is None:
                 fail_streak += 1
                 self.state.vision_error = "Could not read a camera frame"
-                if fail_streak >= 3:
+                if fail_streak >= 20:
                     print(f"Vision reconnecting {_safe_source(source)}")
                     camera.release()
                     time.sleep(0.4)
@@ -173,17 +185,9 @@ class VisionWorker:
 
     def _detect_loop(self) -> None:
         try:
-            from ultralytics import YOLO
-        except ImportError as exc:
-            self.state.vision_error = f"ultralytics not installed: {exc}"
-            print(f"ERROR: {self.state.vision_error}")
-            return
-
-        print(f"Loading YOLO model ({config.YOLO_MODEL})...")
-        try:
-            model = YOLO(config.YOLO_MODEL)
+            detector = shared_detector()
         except Exception as exc:  # noqa: BLE001
-            self.state.vision_error = f"Could not load YOLO: {exc}"
+            self.state.vision_error = f"Could not load person detection: {exc}"
             print(f"ERROR: {self.state.vision_error}")
             return
 
@@ -200,10 +204,7 @@ class VisionWorker:
                 time.sleep(0.01)
                 continue
 
-            results = model(frame, verbose=False)
-            result = results[0]
-            names = result.names
-            boxes = result.boxes
+            detections = detector.detect(frame)
             display = frame.copy()
             target_count = 0
             best_conf = 0.0
@@ -211,31 +212,23 @@ class VisionWorker:
             if config.USE_ROI:
                 cv2.rectangle(display, (roi_x1, roi_y1), (roi_x2, roi_y2), (255, 255, 0), 2)
 
-            if boxes is not None:
-                for box in boxes:
-                    label = names[int(box.cls[0])]
-                    confidence = float(box.conf[0])
-                    if label not in config.ALLOWED_LABELS:
+            for label, confidence, x1, y1, x2, y2 in detections:
+                if config.USE_ROI:
+                    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                    if not (roi_x1 <= cx <= roi_x2 and roi_y1 <= cy <= roi_y2):
                         continue
-                    if confidence < config.CONFIDENCE_THRESHOLD:
-                        continue
-                    x1, y1, x2, y2 = (int(v) for v in box.xyxy[0])
-                    if config.USE_ROI:
-                        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-                        if not (roi_x1 <= cx <= roi_x2 and roi_y1 <= cy <= roi_y2):
-                            continue
-                    target_count += 1
-                    best_conf = max(best_conf, confidence)
-                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(
-                        display,
-                        f"{label} {confidence:.2f}",
-                        (x1, y1 - 10 if y1 > 20 else y1 + 20),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        (255, 255, 255),
-                        2,
-                    )
+                target_count += 1
+                best_conf = max(best_conf, confidence)
+                cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(
+                    display,
+                    f"{label} {confidence:.2f}",
+                    (x1, y1 - 10 if y1 > 20 else y1 + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 255),
+                    2,
+                )
 
             if target_count > 0:
                 person_streak += 1
