@@ -18,6 +18,7 @@ from hub.devices.lock import build_lock_adapter
 from hub.devices.zigbee_light import ZigbeeLights
 from hub.errors import http_error_handler
 from hub.media.webrtc import CallManager
+from hub.monitor import MonitorPublisher
 from hub.notify import EventBus
 from hub.ratelimit import RateLimiter
 from hub.state import HubState
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
     doorbell = DoorbellWorker(store, bus, vision)
     driveway_cam = DrivewayCamera(store, bus)
     calls_mgr = CallManager(vision)
+    monitor = MonitorPublisher(vision, driveway_cam)
 
     app.state.store = store
     app.state.hub_state = state
@@ -55,7 +57,9 @@ async def lifespan(app: FastAPI):
     vision.start(loop)
     doorbell.start(loop)
     driveway_cam.start(loop)
+    monitor.start()
     yield
+    monitor.stop()
     driveway_cam.stop()
     doorbell.stop()
     vision.stop()
