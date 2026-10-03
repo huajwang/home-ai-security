@@ -19,11 +19,45 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="8dp" />
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/searchQuery"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="person at the door yesterday afternoon"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            android:singleLine="true" />
+
+        <Button
+            android:id="@+id/search"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Search" />
+    </LinearLayout>
+
     <ListView
         android:id="@+id/events"
         android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:layout_marginTop="8dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -126,4 +160,6 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Driveway" />
+    </LinearLayout>
+    </ScrollView>
 </LinearLayout>

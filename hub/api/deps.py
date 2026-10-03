@@ -88,6 +88,7 @@ def event_payload(event: dict[str, Any]) -> dict[str, Any]:
         "id": event["id"],
         "ts": event["ts"],
         "label": event["label"],
+        "camera": event.get("camera"),
         "confidence": event["confidence"],
         "snapshot_url": f"/v1/events/{event['id']}/snapshot" if event.get("snapshot_path") else None,
         "clip_url": f"/v1/events/{event['id']}/clip" if event.get("clip_path") else None,

@@ -39,7 +39,13 @@ data class DoorEvent(
     val ts: String,
     val label: String,
     val confidence: Double,
-    val snapshotUrl: String?
+    val snapshotUrl: String?,
+    val camera: String? = null
+)
+
+data class EventSearch(
+    val understood: Boolean,
+    val events: List<DoorEvent>
 )
 
 data class LockStatus(

@@ -338,7 +338,7 @@ class CallManager:
         if frame is None:
             raise LookupError("no_frame")
         path = self.vision.save_snapshot(frame)
-        event = self.vision.store.add_event("photo", 1.0, path)
+        event = self.vision.store.add_event("photo", 1.0, path, camera="door")
         print(f"Photo event {event['id']}")
         self.vision._publish({"type": "photo_saved", "event": event_payload(event)})
         return event
@@ -349,7 +349,7 @@ class CallManager:
 
     def stop_clip(self) -> dict[str, Any]:
         clip, thumb = self.clips.stop()
-        event = self.vision.store.add_event("clip", 1.0, thumb, clip)
+        event = self.vision.store.add_event("clip", 1.0, thumb, clip, camera="door")
         print(f"Clip event {event['id']}")
         self.vision._publish({"type": "clip_saved", "event": event_payload(event)})
         return event

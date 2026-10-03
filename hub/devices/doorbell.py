@@ -132,7 +132,7 @@ class DoorbellWorker:
         snapshot_path = None
         if frame is not None:
             snapshot_path = self.vision._save_snapshot(frame)
-        event = self.store.add_event("doorbell", 1.0, snapshot_path)
+        event = self.store.add_event("doorbell", 1.0, snapshot_path, camera="door")
         print(f"Doorbell pressed event {event['id']}")
         if self.loop is None:
             return

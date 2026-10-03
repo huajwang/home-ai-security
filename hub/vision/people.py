@@ -70,7 +70,7 @@ class NpuPeopleDetector(PeopleDetector):
         found: list[tuple[str, float, int, int, int, int]] = []
         for box, class_id, score in zip(boxes, classes, scores):
             label = _class_name(int(class_id))
-            if label not in config.ALLOWED_LABELS or float(score) < config.CONFIDENCE_THRESHOLD:
+            if not _record_label(label) or float(score) < config.CONFIDENCE_THRESHOLD:
                 continue
             x1, y1, x2, y2 = _unmap_box(box, scale, pad_x, pad_y, frame.shape[1], frame.shape[0])
             found.append((label, float(score), x1, y1, x2, y2))
@@ -99,7 +99,7 @@ class CpuPeopleDetector(PeopleDetector):
         for box in boxes:
             label = str(names[int(box.cls[0])]).strip()
             confidence = float(box.conf[0])
-            if label not in config.ALLOWED_LABELS or confidence < config.CONFIDENCE_THRESHOLD:
+            if not _record_label(label) or confidence < config.CONFIDENCE_THRESHOLD:
                 continue
             x1, y1, x2, y2 = (int(v) for v in box.xyxy[0])
             found.append((label, confidence, x1, y1, x2, y2))
@@ -162,6 +162,10 @@ def _unmap_box(
         max(0, min(width - 1, x2)),
         max(0, min(height - 1, y2)),
     )
+
+
+def _record_label(label: str) -> bool:
+    return label in config.ALLOWED_LABELS or label in config.RECORD_LABELS
 
 
 def _class_name(class_id: int) -> str:

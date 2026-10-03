@@ -57,6 +57,15 @@ ALLOWED_LABELS = {
     for item in os.getenv("HUB_ALLOWED_LABELS", "person").split(",")
     if item.strip()
 }
+# Stored for search. These do not raise the door alarm.
+RECORD_LABELS = {
+    item.strip()
+    for item in os.getenv(
+        "HUB_RECORD_LABELS",
+        "bicycle,car,motorbike,bus,truck,bird,cat,dog,backpack,suitcase",
+    ).split(",")
+    if item.strip()
+}
 CONFIDENCE_THRESHOLD = float(os.getenv("HUB_CONFIDENCE_THRESHOLD", "0.50"))
 FRAMES_REQUIRED_FOR_ALERT = int(os.getenv("HUB_FRAMES_REQUIRED", "5"))
 ALARM_COOLDOWN_SECONDS = float(os.getenv("HUB_ALARM_COOLDOWN", "3.0"))

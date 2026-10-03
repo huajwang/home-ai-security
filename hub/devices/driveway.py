@@ -13,6 +13,7 @@ from hub import config
 from hub.notify import EventBus
 from hub.storage import Store
 from hub.vision.people import shared_detector
+from hub.vision.visits import ObjectVisits
 from hub.vision.worker import _open_camera, _safe_source
 
 
@@ -162,6 +163,7 @@ class DrivewayCamera:
             print(f"Driveway detection idle: {exc}")
             return
         print("Driveway watching for a person")
+        other_visits = ObjectVisits()
         streak = 0
         last_alarm = 0.0
         visit_notified = False
@@ -179,12 +181,18 @@ class DrivewayCamera:
             detections = detector.detect(frame)
             count = 0
             best = 0.0
+            seen_other: dict[str, float] = {}
             display = frame.copy()
             for label, confidence, x1, y1, x2, y2 in detections:
-                if label not in config.ALLOWED_LABELS or confidence < config.CONFIDENCE_THRESHOLD:
+                if confidence < config.CONFIDENCE_THRESHOLD:
                     continue
-                count += 1
-                best = max(best, confidence)
+                if label in config.ALLOWED_LABELS:
+                    count += 1
+                    best = max(best, confidence)
+                elif label in config.RECORD_LABELS:
+                    seen_other[label] = max(seen_other.get(label, 0.0), confidence)
+                else:
+                    continue
                 cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
             with self._lock:
                 self._frame = display
@@ -199,7 +207,7 @@ class DrivewayCamera:
                     visit_notified = True
                     last_alarm = now
                     path = self._save(display)
-                    event = self.store.add_event("driveway", best, path)
+                    event = self.store.add_event("person", best, path, camera="driveway")
                     print(f"Driveway person event {event['id']} confidence={best:.2f}")
                     self._publish(
                         {
@@ -213,6 +221,10 @@ class DrivewayCamera:
                             },
                         }
                     )
+            for label, confidence in other_visits.update(seen_other, now):
+                path = self._save(display)
+                event = self.store.add_event(label, confidence, path, camera="driveway")
+                print(f"Driveway {label} event {event['id']} confidence={confidence:.2f}")
             time.sleep(0.05)
 
     def _save(self, image: np.ndarray) -> str:

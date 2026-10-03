@@ -17,6 +17,7 @@ from hub.notify import EventBus
 from hub.state import HubState
 from hub.storage import Store
 from hub.vision.people import shared_detector
+from hub.vision.visits import ObjectVisits
 
 
 def _safe_source(source: str | int) -> str:
@@ -139,19 +140,31 @@ class VisionWorker:
     def _capture_loop(self) -> None:
         config.ensure_dirs()
         source: str | int = config.CAMERA_URL or config.CAMERA_INDEX
-        camera = _open_camera(source)
-        if not camera.isOpened():
-            self.state.vision_running = False
-            self.state.vision_error = f"Could not open camera {_safe_source(source)}"
-            print(f"ERROR: {self.state.vision_error}")
-            return
-        print(f"Vision opened camera {_safe_source(source)}")
-        self.state.vision_running = True
+        camera = None
         fail_streak = 0
         fps_t0 = time.time()
         fps_n = 0
 
         while not self._stop.is_set():
+            if camera is None or not camera.isOpened():
+                if camera is not None:
+                    camera.release()
+                camera = _open_camera(source)
+                if not camera.isOpened():
+                    camera.release()
+                    camera = None
+                    self.state.vision_running = False
+                    self.state.vision_error = f"Could not open camera {_safe_source(source)}"
+                    print(f"ERROR: {self.state.vision_error}")
+                    time.sleep(2.0)
+                    continue
+                print(f"Vision opened camera {_safe_source(source)}")
+                self.state.vision_running = True
+                self.state.vision_error = None
+                fail_streak = 0
+                fps_t0 = time.time()
+                fps_n = 0
+
             success, frame = camera.read()
             if not success or frame is None:
                 fail_streak += 1
@@ -159,12 +172,9 @@ class VisionWorker:
                 if fail_streak >= 20:
                     print(f"Vision reconnecting {_safe_source(source)}")
                     camera.release()
-                    time.sleep(0.4)
-                    camera = _open_camera(source)
+                    camera = None
                     fail_streak = 0
-                    if not camera.isOpened():
-                        self.state.vision_error = f"Could not reopen camera {_safe_source(source)}"
-                        time.sleep(1.0)
+                    time.sleep(0.4)
                 else:
                     time.sleep(0.05)
                 continue
@@ -179,7 +189,8 @@ class VisionWorker:
                 fps_n = 0
                 fps_t0 = time.time()
 
-        camera.release()
+        if camera is not None:
+            camera.release()
         self.state.vision_running = False
         print("Vision capture stopped.")
 
@@ -192,6 +203,7 @@ class VisionWorker:
             return
 
         print(f"Vision watching for: {sorted(config.ALLOWED_LABELS)}")
+        other_visits = ObjectVisits()
         person_streak = 0
         last_alarm_time = 0.0
         visit_notified = False
@@ -208,6 +220,7 @@ class VisionWorker:
             display = frame.copy()
             target_count = 0
             best_conf = 0.0
+            seen_other: dict[str, float] = {}
 
             if config.USE_ROI:
                 cv2.rectangle(display, (roi_x1, roi_y1), (roi_x2, roi_y2), (255, 255, 0), 2)
@@ -217,8 +230,11 @@ class VisionWorker:
                     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                     if not (roi_x1 <= cx <= roi_x2 and roi_y1 <= cy <= roi_y2):
                         continue
-                target_count += 1
-                best_conf = max(best_conf, confidence)
+                if label in config.ALLOWED_LABELS:
+                    target_count += 1
+                    best_conf = max(best_conf, confidence)
+                elif label in config.RECORD_LABELS:
+                    seen_other[label] = max(seen_other.get(label, 0.0), confidence)
                 cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(
                     display,
@@ -251,6 +267,7 @@ class VisionWorker:
                         next(iter(config.ALLOWED_LABELS), "person"),
                         best_conf,
                         snapshot_path,
+                        camera="door",
                     )
                     print(f"Person event {event['id']} confidence={best_conf:.2f}")
                     self._publish(
@@ -271,6 +288,11 @@ class VisionWorker:
                 if snap["alarm_active"] and self.state.set_alarm(False):
                     print("Target gone → alarm cleared")
                     self._publish({"type": "alarm_cleared"})
+
+            for label, confidence in other_visits.update(seen_other, now):
+                path = self._save_snapshot(display)
+                event = self.store.add_event(label, confidence, path, camera="door")
+                print(f"Door {label} event {event['id']} confidence={confidence:.2f}")
 
             snap = self.state.snapshot()
             if not snap["armed"]:
