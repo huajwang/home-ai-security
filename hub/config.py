@@ -89,6 +89,8 @@ CLIP_MAX_SECONDS = float(os.getenv("HUB_CLIP_MAX_SECONDS", "60"))
 # CH340 Zigbee coordinator (ZNP). Empty disables the bulb controller.
 ZIGBEE_DEVICE = os.getenv("HUB_ZIGBEE_DEVICE", "").strip()
 ZIGBEE_BAUD = int(os.getenv("HUB_ZIGBEE_BAUD", "115200"))
+# One bulb for the door deterrent. Empty keeps the door action on every paired bulb.
+DOOR_LIGHT = os.getenv("HUB_DOOR_LIGHT", "").strip()
 # Zooz Z-Wave stick. Empty keeps the in-memory stub lock.
 ZWAVE_DEVICE = os.getenv("HUB_ZWAVE_DEVICE", "").strip()
 ZWAVE_URL = os.getenv("HUB_ZWAVE_URL", "http://127.0.0.1:3091").strip()

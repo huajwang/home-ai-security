@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     lock_adapter = build_lock_adapter(store)
     bulb = ZigbeeLights()
     vision = VisionWorker(store, state, bus)
+    vision.lights = bulb
     doorbell = DoorbellWorker(store, bus, vision)
     driveway_cam = DrivewayCamera(store, bus)
     calls_mgr = CallManager(vision)

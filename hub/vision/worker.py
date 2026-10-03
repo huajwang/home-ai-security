@@ -68,6 +68,7 @@ class VisionWorker:
         self.store = store
         self.state = state
         self.bus = bus
+        self.lights = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self._stop = threading.Event()
         self._capture_thread: threading.Thread | None = None
@@ -113,6 +114,25 @@ class VisionWorker:
     def _publish(self, payload: dict) -> None:
         if self.loop is not None:
             self.bus.publish_threadsafe(self.loop, payload)
+
+    def _deter_light(self, turn_on: bool) -> threading.Thread | None:
+        """Turn paired bulbs on or off without stalling the camera loop."""
+        lights = self.lights
+        if lights is None:
+            return None
+
+        ieee = config.DOOR_LIGHT or None
+
+        def run() -> None:
+            try:
+                lights.set_on(turn_on, ieee)
+            except Exception as exc:  # noqa: BLE001
+                state = "on" if turn_on else "off"
+                print(f"Door light {state} failed: {exc}")
+
+        thread = threading.Thread(target=run, name="door-light", daemon=True)
+        thread.start()
+        return thread
 
     def save_snapshot(self, image: np.ndarray) -> str:
         filename = f"event_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
@@ -262,6 +282,7 @@ class VisionWorker:
                     last_alarm_time = now
                     if snap["armed"]:
                         self.state.set_alarm(True)
+                        self._deter_light(True)
                     snapshot_path = self._save_snapshot(display)
                     event = self.store.add_event(
                         next(iter(config.ALLOWED_LABELS), "person"),
@@ -288,6 +309,7 @@ class VisionWorker:
                 if snap["alarm_active"] and self.state.set_alarm(False):
                     print("Target gone → alarm cleared")
                     self._publish({"type": "alarm_cleared"})
+                    self._deter_light(False)
 
             for label, confidence in other_visits.update(seen_other, now):
                 path = self._save_snapshot(display)
