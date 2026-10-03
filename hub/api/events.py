@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from hub.api.deps import current_principal, event_payload, get_services
 from hub.auth import decode_access_token
 from hub.errors import raise_api
+from hub.search.query import parse_question
 
 router = APIRouter(tags=["events"])
 
@@ -26,6 +27,20 @@ def list_events(
 ) -> dict[str, Any]:
     rows = services["store"].list_events(since, limit)
     return {"events": [event_payload(row) for row in rows]}
+
+
+@router.get("/v1/events/search")
+def search_events(
+    q: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=50, ge=1, le=200),
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    parsed = parse_question(q)
+    rows = []
+    if parsed.understood:
+        rows = services["store"].search_events(parsed.label, parsed.camera, parsed.start, parsed.end, limit)
+    return {"query": q, "filter": parsed.as_dict(), "events": [event_payload(row) for row in rows]}
 
 
 @router.get("/v1/events/{event_id}")

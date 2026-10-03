@@ -100,6 +100,12 @@ class Store:
             cols = {str(row["name"]) for row in cur.execute("PRAGMA table_info(events)").fetchall()}
             if "clip_path" not in cols:
                 cur.execute("ALTER TABLE events ADD COLUMN clip_path TEXT")
+            if "camera" not in cols:
+                cur.execute("ALTER TABLE events ADD COLUMN camera TEXT")
+                cur.execute(
+                    "UPDATE events SET camera = 'driveway' WHERE label = 'driveway' AND camera IS NULL"
+                )
+                cur.execute("UPDATE events SET camera = 'door' WHERE camera IS NULL")
 
     def get_kv(self, key: str) -> str | None:
         with self.cursor() as cur:
@@ -200,15 +206,49 @@ class Store:
         confidence: float,
         snapshot_path: str | None,
         clip_path: str | None = None,
+        camera: str | None = None,
     ) -> dict[str, Any]:
         now = utcnow()
         with self.cursor() as cur:
             cur.execute(
-                "INSERT INTO events(ts, label, confidence, snapshot_path, clip_path) VALUES(?,?,?,?,?)",
-                (now, label, confidence, snapshot_path, clip_path),
+                "INSERT INTO events(ts, label, confidence, snapshot_path, clip_path, camera) VALUES(?,?,?,?,?,?)",
+                (now, label, confidence, snapshot_path, clip_path, camera),
             )
             event_id = cur.lastrowid
         return self.get_event(event_id)  # type: ignore[return-value]
+
+    def search_events(
+        self,
+        label: str | None,
+        camera: str | None,
+        start: str | None,
+        end: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(limit, 200))
+        clauses: list[str] = []
+        args: list[Any] = []
+        if label == "person":
+            clauses.append("label IN ('person', 'driveway')")
+        elif label:
+            clauses.append("label = ?")
+            args.append(label)
+        if camera:
+            clauses.append("camera = ?")
+            args.append(camera)
+        if start:
+            clauses.append("ts >= ?")
+            args.append(start)
+        if end:
+            clauses.append("ts < ?")
+            args.append(end)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.cursor() as cur:
+            rows = cur.execute(
+                f"SELECT * FROM events{where} ORDER BY id DESC LIMIT ?",
+                (*args, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def get_event(self, event_id: int) -> dict[str, Any] | None:
         with self.cursor() as cur:

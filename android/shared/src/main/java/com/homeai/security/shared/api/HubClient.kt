@@ -3,6 +3,7 @@ package com.homeai.security.shared.api
 import com.homeai.security.shared.auth.SessionStore
 import com.homeai.security.shared.model.Device
 import com.homeai.security.shared.model.DoorEvent
+import com.homeai.security.shared.model.EventSearch
 import com.homeai.security.shared.model.Home
 import com.homeai.security.shared.model.LockStatus
 import com.homeai.security.shared.model.Session
@@ -68,9 +69,20 @@ class HubClient(private val store: SessionStore) {
         return system()
     }
 
-    fun events(): List<DoorEvent> {
-        val obj = request("GET", "/v1/events?limit=50")
-        val list = obj.getJSONArray("events")
+    fun events(): List<DoorEvent> = parseEvents(request("GET", "/v1/events?limit=50"))
+
+    fun searchEvents(question: String): EventSearch {
+        val q = java.net.URLEncoder.encode(question, Charsets.UTF_8.name()).replace("+", "%20")
+        val obj = request("GET", "/v1/events/search?q=$q")
+        val filter = obj.optJSONObject("filter")
+        return EventSearch(
+            understood = filter?.optBoolean("understood", false) ?: false,
+            events = parseEvents(obj)
+        )
+    }
+
+    private fun parseEvents(obj: JSONObject): List<DoorEvent> {
+        val list = obj.optJSONArray("events") ?: return emptyList()
         return buildList {
             for (i in 0 until list.length()) {
                 val item = list.getJSONObject(i)
@@ -80,7 +92,8 @@ class HubClient(private val store: SessionStore) {
                         ts = item.getString("ts"),
                         label = item.getString("label"),
                         confidence = item.optDouble("confidence", 0.0),
-                        snapshotUrl = item.optString("snapshot_url", null).takeIf { it.isNotBlank() && it != "null" }
+                        snapshotUrl = item.optString("snapshot_url", null).takeIf { it.isNotBlank() && it != "null" },
+                        camera = item.optString("camera", null).takeIf { it.isNotBlank() && it != "null" }
                     )
                 )
             }

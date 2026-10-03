@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ListView
 import android.widget.TextView
@@ -39,6 +40,7 @@ class HomeActivity : AppCompatActivity() {
     private val stationMode: Boolean
         get() = packageName.endsWith(".station")
     private val hubListener = HubEvents.Listener { runOnUiThread { refresh() } }
+    private var searchText: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +95,22 @@ class HomeActivity : AppCompatActivity() {
         findViewById<Button>(R.id.pairBulb).setOnClickListener { act { client.pairBulb() } }
         findViewById<Button>(R.id.pairLock).setOnClickListener { act { client.pairLock() } }
         findViewById<Button>(R.id.driveway).setOnClickListener { showDriveway() }
+        if (!stationMode) {
+            val searchBox = findViewById<EditText>(R.id.searchQuery)
+            val runSearch = {
+                searchText = searchBox.text.toString().trim()
+                refresh()
+            }
+            findViewById<Button>(R.id.search).setOnClickListener { runSearch() }
+            searchBox.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                    runSearch()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
         findViewById<Button>(R.id.unlock).setOnClickListener {
             UnlockHelper.confirm(this, store, preferBiometric = !stationMode) {
                 act { client.unlockDoor() }
@@ -210,8 +228,21 @@ class HomeActivity : AppCompatActivity() {
         thread {
             try {
                 val status = client.system()
-                val list = client.events()
-                runOnUiThread { bind(status.armed, status.lockState, status.alarmActive, list) }
+                val question = searchText
+                if (question.isEmpty()) {
+                    val list = client.events()
+                    runOnUiThread { bind(status.armed, status.lockState, status.alarmActive, list, null) }
+                } else {
+                    val found = client.searchEvents(question)
+                    val note = if (found.understood) {
+                        "Search: ${found.events.size}"
+                    } else {
+                        "No stored label matches that question"
+                    }
+                    runOnUiThread {
+                        bind(status.armed, status.lockState, status.alarmActive, found.events, note)
+                    }
+                }
             } catch (ex: Exception) {
                 runOnUiThread {
                     findViewById<TextView>(R.id.statusLine).text = "Hub unreachable"
@@ -221,18 +252,28 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun bind(armed: Boolean, lockState: String, alarm: Boolean, list: List<DoorEvent>) {
+    private fun bind(
+        armed: Boolean,
+        lockState: String,
+        alarm: Boolean,
+        list: List<DoorEvent>,
+        searchNote: String?
+    ) {
         val mode = when {
             !armed -> "DISARMED"
             alarm -> "ALERT"
             else -> "ALL CLEAR"
         }
         findViewById<TextView>(R.id.statusLine).text = "${if (stationMode) "Station" else "Phone"}  |  $mode"
-        findViewById<TextView>(R.id.detailLine).text = "Lock: $lockState   Events: ${list.size}"
+        val count = searchNote ?: "Events: ${list.size}"
+        findViewById<TextView>(R.id.detailLine).text = "Lock: $lockState   $count"
         events.clear()
         eventModels.clear()
         eventModels.addAll(list)
-        events.addAll(list.map { "${it.ts}  ${it.label}  ${"%.2f".format(it.confidence)}" })
+        events.addAll(list.map { event ->
+            val where = event.camera?.let { "  $it" }.orEmpty()
+            "${event.ts}  ${event.label}$where  ${"%.2f".format(event.confidence)}"
+        })
         adapter.notifyDataSetChanged()
     }
 }

@@ -64,7 +64,7 @@ async def ring(
     _: dict[str, Any] = Depends(current_principal),
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
-    event = services["store"].add_event("doorbell", 1.0, None)
+    event = services["store"].add_event("doorbell", 1.0, None, camera="door")
     await services["bus"].publish(
         {
             "type": "doorbell_pressed",
