@@ -100,6 +100,38 @@ def test_create_and_hangup_call() -> None:
         assert photo.json()["code"] == "no_frame"
 
 
+def test_door_light_command_reaches_the_bulb() -> None:
+    class Lights:
+        def __init__(self) -> None:
+            self.calls: list[bool] = []
+
+        def set_on(self, turn_on: bool, ieee: str | None = None) -> dict[str, str]:
+            self.calls.append((turn_on, ieee))
+            return {"state": "on" if turn_on else "off"}
+
+    from hub import config
+
+    with TestClient(create_app()) as client:
+        lights = Lights()
+        vision = client.app.state.vision
+        vision.lights = lights
+        previous = config.DOOR_LIGHT
+        config.DOOR_LIGHT = "b0:ce:18:14:03:68:1a:64"
+        try:
+            first = vision._deter_light(True)
+            assert first is not None
+            first.join(2)
+            second = vision._deter_light(False)
+            assert second is not None
+            second.join(2)
+        finally:
+            config.DOOR_LIGHT = previous
+        assert lights.calls == [
+            (True, "b0:ce:18:14:03:68:1a:64"),
+            (False, "b0:ce:18:14:03:68:1a:64"),
+        ]
+
+
 def test_lights_disabled_without_dongle() -> None:
     with TestClient(create_app()) as client:
         tokens = _login(client)
