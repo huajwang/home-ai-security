@@ -10,6 +10,7 @@ Combines:
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import io
 import json
 import logging
@@ -19,7 +20,7 @@ import threading
 import time
 import wave
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional, Union
 
 import numpy as np
 import requests
@@ -117,8 +118,11 @@ class VoiceSatellite:
     def __init__(
         self,
         hub_client: Optional[HubClient] = None,
-        wakeword: str = "hey_jarvis",
-        wake_threshold: float = 0.5,
+        wakeword: Union[str, list[str]] = "hey_jarvis",
+        wake_threshold: float = 0.25,
+        gain: float = 2.5,
+        device: Optional[int] = None,
+        debug: bool = False,
         whisper_encoder: str = DEFAULT_WHISPER_ENCODER,
         whisper_decoder: str = DEFAULT_WHISPER_DECODER,
         whisper_tokens: str = DEFAULT_WHISPER_TOKENS,
@@ -126,8 +130,15 @@ class VoiceSatellite:
         piper_config: str = DEFAULT_PIPER_CONFIG,
     ) -> None:
         self.hub = hub_client or HubClient()
-        self.wakeword = wakeword
+        if isinstance(wakeword, str):
+            self.wakewords = [w.strip() for w in wakeword.split(",") if w.strip()]
+        else:
+            self.wakewords = list(wakeword)
+        self.wakeword = self.wakewords[0] if self.wakewords else "hey_jarvis"
         self.wake_threshold = wake_threshold
+        self.gain = gain
+        self.device = device
+        self.debug = debug
         self.whisper_encoder = whisper_encoder
         self.whisper_decoder = whisper_decoder
         self.whisper_tokens = whisper_tokens
@@ -186,10 +197,10 @@ class VoiceSatellite:
             from openwakeword.model import Model
 
             self._oww_model = Model(
-                wakeword_models=[self.wakeword],
+                wakeword_models=self.wakewords,
                 inference_framework="onnx",
             )
-            logger.info("openWakeWord loaded with model: %s", self.wakeword)
+            logger.info("openWakeWord loaded with models: %s", self.wakewords)
             return True
         except Exception as exc:
             logger.error("Failed to load openWakeWord: %s", exc)
@@ -273,43 +284,84 @@ class VoiceSatellite:
         chunk_size = 1280  # 80ms at 16kHz
         self._running = True
 
-        logger.info("Listening for wake-word '%s'...", self.wakeword)
+        logger.info(
+            "Listening for wake-word(s) %s (threshold: %.2f, gain: %.1fx)...",
+            self.wakewords,
+            self.wake_threshold,
+            self.gain,
+        )
 
         def play_chime():
             try:
                 # Short 880Hz chime
-                t = np.linspace(0, 0.15, int(sample_rate * 0.15), False)
-                tone = (np.sin(2 * np.pi * 880 * t) * 0.3 * 32767).astype(np.int16)
+                t = np.linspace(0, 0.12, int(sample_rate * 0.12), False)
+                tone = (np.sin(2 * np.pi * 880 * t) * 0.25 * 32767).astype(np.int16)
                 sd.play(tone, samplerate=sample_rate)
-                sd.wait()
             except Exception:
                 pass
 
-        with sd.InputStream(samplerate=sample_rate, channels=1, dtype="int16") as mic:
+        # Rolling circular buffer for the last ~1.6 seconds of audio
+        pre_roll: deque[np.ndarray] = deque(maxlen=20)
+
+        with sd.InputStream(
+            device=self.device,
+            samplerate=sample_rate,
+            channels=1,
+            dtype="int16",
+        ) as mic:
             while self._running:
                 data, _ = mic.read(chunk_size)
-                samples = data.flatten()
+                raw_samples = data.flatten()
+
+                # Apply gain boost
+                boosted = (raw_samples.astype(np.float32) * self.gain)
+                samples = np.clip(boosted, -32768, 32767).astype(np.int16)
+                pre_roll.append(samples)
 
                 # Feed wake-word model
                 prediction = self._oww_model.predict(samples)
-                score = 0.0
-                for model_key in self._oww_model.models.keys():
-                    if self.wakeword in model_key:
-                        score = prediction.get(model_key, 0.0)
-                        break
+                best_model = None
+                best_score = 0.0
 
-                if score >= self.wake_threshold:
-                    logger.info("Wake-word detected! (score: %.3f)", score)
+                for model_key, score in prediction.items():
+                    for target in self.wakewords:
+                        if target in model_key and score > best_score:
+                            best_score = score
+                            best_model = target
+
+                if self.debug and best_score > 0.04:
+                    peak = int(np.max(np.abs(samples)))
+                    print(
+                        f"\r[Peak: {peak:5d} | {best_model}: {best_score:.3f}]",
+                        end="",
+                        flush=True,
+                    )
+
+                if best_score >= self.wake_threshold:
+                    if self.debug:
+                        print()
+                    logger.info("Wake-word '%s' detected! (score: %.3f)", best_model, best_score)
                     self._oww_model.reset()
-                    play_chime()
+                    threading.Thread(target=play_chime, daemon=True).start()
 
-                    # Record 3.5 seconds of user speech
+                    # Record next 3.5 seconds of user speech
                     logger.info("Listening for command...")
+                    query_chunks = []
                     query_samples = int(sample_rate * 3.5)
-                    audio_buf, _ = mic.read(query_samples)
-                    float_audio = audio_buf.flatten().astype(np.float32) / 32768.0
+                    samples_read = 0
+                    while samples_read < query_samples and self._running:
+                        chunk, _ = mic.read(chunk_size)
+                        c_boosted = (chunk.flatten().astype(np.float32) * self.gain)
+                        c_samples = np.clip(c_boosted, -32768, 32767).astype(np.int16)
+                        query_chunks.append(c_samples)
+                        samples_read += len(c_samples)
+
+                    # Combine pre-roll (includes query if spoken right away) and new chunks
+                    full_audio = np.concatenate(list(pre_roll) + query_chunks)
+                    float_audio = full_audio.astype(np.float32) / 32768.0
 
                     self.process_voice_turn(float_audio)
+                    pre_roll.clear()
                     logger.info("Resuming wake-word listening...")
 
 
@@ -323,12 +375,45 @@ def main() -> None:
         "--listen", action="store_true", help="Start always-on listening mode"
     )
     parser.add_argument(
-        "--wakeword", default="hey_jarvis", help="Wake-word model name"
+        "--wakeword", default="hey_jarvis,alexa", help="Comma-separated wake-word models (e.g. hey_jarvis,alexa)"
+    )
+    parser.add_argument(
+        "--threshold", type=float, default=0.25, help="Wake-word score threshold (default: 0.25)"
+    )
+    parser.add_argument(
+        "--gain", type=float, default=2.5, help="Software mic gain multiplier (default: 2.5)"
+    )
+    parser.add_argument(
+        "--device", type=int, default=None, help="Input audio device index"
+    )
+    parser.add_argument(
+        "--list-devices", action="store_true", help="List audio input devices and exit"
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="Show real-time audio levels and wake-word scores"
     )
     args = parser.parse_args()
 
+    if args.list_devices:
+        import sounddevice as sd
+
+        print("Available Audio Input Devices:")
+        for idx, dev in enumerate(sd.query_devices()):
+            if dev.get("max_input_channels", 0) > 0:
+                print(
+                    f"  [{idx}] {dev['name']} (channels: {dev['max_input_channels']}, default sr: {int(dev['default_samplerate'])})"
+                )
+        return
+
     client = HubClient(base_url=args.hub_url)
-    satellite = VoiceSatellite(hub_client=client, wakeword=args.wakeword)
+    satellite = VoiceSatellite(
+        hub_client=client,
+        wakeword=args.wakeword,
+        wake_threshold=args.threshold,
+        gain=args.gain,
+        device=args.device,
+        debug=args.debug,
+    )
 
     if args.query:
         logger.info("Sending query: %s", args.query)
