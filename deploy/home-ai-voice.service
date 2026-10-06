@@ -1,0 +1,19 @@
+[Unit]
+Description=Home AI Local Room Voice Satellite
+After=network-online.target home-ai-hub.service sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=radxa
+Group=radxa
+SupplementaryGroups=audio dialout
+WorkingDirectory=/home/radxa/home-ai-security
+EnvironmentFile=-/home/radxa/home-ai-security/hub.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/radxa/home-ai-security/.venv/bin/python -m satellites.pc_assistant --listen --hub-url https://127.0.0.1:8443
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -227,6 +227,8 @@ class VisionWorker:
         person_streak = 0
         last_alarm_time = 0.0
         visit_notified = False
+        lingering_since: float | None = None
+        deterrent_spoken = False
         last_id = -1
         roi_x1, roi_y1, roi_x2, roi_y2 = config.ROI
 
@@ -304,8 +306,21 @@ class VisionWorker:
                         }
                     )
 
+            if target_confirmed and snap["armed"]:
+                if lingering_since is None:
+                    lingering_since = now
+                elif now - lingering_since >= 5.0 and not deterrent_spoken:
+                    deterrent_spoken = True
+                    if config.DOORBELL_DETERRENT:
+                        from hub.devices.spoken_announcer import announce_async
+
+                        announce_async(config.DETERRENT_WARNING)
+                        print("Lingering armed person -> Spoke deterrent warning.")
+
             if not target_confirmed:
                 visit_notified = False
+                lingering_since = None
+                deterrent_spoken = False
                 if snap["alarm_active"] and self.state.set_alarm(False):
                     print("Target gone → alarm cleared")
                     self._publish({"type": "alarm_cleared"})

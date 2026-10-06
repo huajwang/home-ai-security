@@ -62,6 +62,8 @@ def test_search_finds_a_car_recorded_today() -> None:
             },
         ).json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
+        with client.app.state.store.cursor() as cur:
+            cur.execute("DELETE FROM events")
         client.app.state.store.add_event("car", 0.8, None, camera="driveway")
         found = client.get("/v1/events/search", params={"q": "car in the driveway today"}, headers=headers)
         assert found.status_code == 200, found.text

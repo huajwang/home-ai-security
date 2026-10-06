@@ -1,6 +1,7 @@
 package com.homeai.security.shared.api
 
 import com.homeai.security.shared.auth.SessionStore
+import com.homeai.security.shared.model.AssistantResponse
 import com.homeai.security.shared.model.Device
 import com.homeai.security.shared.model.DoorEvent
 import com.homeai.security.shared.model.EventSearch
@@ -78,6 +79,15 @@ class HubClient(private val store: SessionStore) {
         return EventSearch(
             understood = filter?.optBoolean("understood", false) ?: false,
             events = parseEvents(obj)
+        )
+    }
+
+    fun assistantChat(prompt: String): AssistantResponse {
+        val body = JSONObject().put("prompt", prompt)
+        val obj = request("POST", "/v1/assistant/chat", body)
+        return AssistantResponse(
+            response = obj.optString("response"),
+            toolUsed = obj.optString("tool_used", "general_llm")
         )
     }
 

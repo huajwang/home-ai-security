@@ -407,3 +407,6 @@ def from_config() -> DoorTalkback | None:
     if not config.TALKBACK_ENABLED or not config.CAMERA_URL:
         return None
     return DoorTalkback(config.CAMERA_URL)
+
+
+TalkbackSession = DoorTalkback

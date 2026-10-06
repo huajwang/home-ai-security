@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.speech.RecognizerIntent
+import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -116,7 +118,73 @@ class HomeActivity : AppCompatActivity() {
                 act { client.unlockDoor() }
             }
         }
+        findViewById<View>(R.id.assistantVoice)?.setOnClickListener {
+            startVoiceAssistant()
+        }
         refresh()
+    }
+
+    private val speechRequestCode = 101
+
+    private fun startVoiceAssistant() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Ask Home AI (e.g. 'Status?', 'Security briefing')")
+        }
+        try {
+            startActivityForResult(intent, speechRequestCode)
+        } catch (_: Exception) {
+            promptTextAssistant()
+        }
+    }
+
+    private fun promptTextAssistant() {
+        val input = EditText(this).apply {
+            hint = "Ask Home AI (e.g., 'Status?', 'Briefing')"
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Home AI Assistant")
+            .setView(input)
+            .setPositiveButton("Ask") { _, _ ->
+                val text = input.text.toString().trim()
+                if (text.isNotBlank()) {
+                    queryAssistant(text)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == speechRequestCode && resultCode == RESULT_OK) {
+            val spokenText = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spokenText.isNullOrBlank()) {
+                queryAssistant(spokenText)
+            }
+        }
+    }
+
+    private fun queryAssistant(prompt: String) {
+        Toast.makeText(this, "Asking AI: \"$prompt\"", Toast.LENGTH_SHORT).show()
+        thread {
+            try {
+                val res = client.assistantChat(prompt)
+                runOnUiThread {
+                    MaterialAlertDialogBuilder(this)
+                        .setTitle("Home AI Assistant")
+                        .setMessage(res.response)
+                        .setPositiveButton("OK", null)
+                        .show()
+                    refresh()
+                }
+            } catch (ex: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Assistant error: ${ex.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     override fun onStart() {
