@@ -196,11 +196,14 @@ class VoiceSatellite:
             import openwakeword
             from openwakeword.model import Model
 
+            # Pass a copy so openwakeword in-place mutation does not affect self.wakewords
+            models_to_load = list(self.wakewords)
             self._oww_model = Model(
-                wakeword_models=self.wakewords,
+                wakeword_models=models_to_load,
                 inference_framework="onnx",
             )
-            logger.info("openWakeWord loaded with models: %s", self.wakewords)
+            loaded_keys = list(self._oww_model.models.keys())
+            logger.info("openWakeWord loaded active wake models: %s", loaded_keys)
             return True
         except Exception as exc:
             logger.error("Failed to load openWakeWord: %s", exc)
@@ -323,16 +326,14 @@ class VoiceSatellite:
                 best_model = None
                 best_score = 0.0
 
-                for model_key, score in prediction.items():
-                    for target in self.wakewords:
-                        if target in model_key and score > best_score:
-                            best_score = score
-                            best_model = target
+                if prediction:
+                    best_model = max(prediction, key=prediction.get)
+                    best_score = float(prediction[best_model])
 
-                if self.debug and best_score > 0.04:
+                if self.debug:
                     peak = int(np.max(np.abs(samples)))
                     print(
-                        f"\r[Peak: {peak:5d} | {best_model}: {best_score:.3f}]",
+                        f"\r[Mic peak: {peak:5d} | {best_model}: {best_score:.3f}]   ",
                         end="",
                         flush=True,
                     )
