@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.unlock_limiter = RateLimiter(config.UNLOCK_RATE_LIMIT)
 
     loop = asyncio_loop()
+    bus.loop = loop
     bulb.start()
     vision.start(loop)
     doorbell.start(loop)

@@ -24,6 +24,9 @@ from typing import Any, List, Optional, Union
 
 import numpy as np
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("pc_assistant")

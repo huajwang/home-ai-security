@@ -80,9 +80,17 @@ def test_tools_direct(tmp_path):
     assert "locked" in dev_stat["summary"]
 
     # Arm / disarm
-    arm_res = set_armed_tool(state, None, actor="test", armed=True)
+    bus_mock = MagicMock()
+    arm_res = set_armed_tool(state, bus_mock, actor="test", armed=True)
     assert arm_res["armed"] is True
     assert state.snapshot()["armed"] is True
+    bus_mock.publish_threadsafe.assert_called_once_with(
+        {
+            "type": "armed_changed",
+            "armed": True,
+            "actor": "test",
+        }
+    )
 
     # Light control
     control_res = control_light_tool(lights_mock, turn_on=True)

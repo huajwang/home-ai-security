@@ -65,7 +65,7 @@ class AssistantEngine:
             }
 
         # 3. Device Status / Lock / Armed Inspection Intent (queries take precedence over commands)
-        if (
+        is_status_query = (
             any(
                 phrase in lower
                 for phrase in (
@@ -76,11 +76,14 @@ class AssistantEngine:
                     "check the lock",
                     "check system",
                     "system status",
+                    "how is the system",
                 )
             )
-            or ("armed" in lower and any(w in lower for w in ("is", "check", "what", "query", "?")))
-            or ("locked" in lower and any(w in lower for w in ("is", "check", "what", "query", "?")))
-        ):
+            or re.search(r"\b(is|are|check|what|tell me if)\b.*\b(armed|locked)\b", lower) is not None
+            or re.search(r"\b(armed|locked)\b.*\b(or not|\?)\b", lower) is not None
+        )
+
+        if is_status_query:
             state = self.services.get("state")
             lock = self.services.get("lock")
             lights = self.services.get("lights")
@@ -94,10 +97,8 @@ class AssistantEngine:
                     "tool_data": status_res,
                 }
 
-        # 4. Arm / Disarm Intent (Action commands)
-        if re.search(r"\b(arm|disarm)\b", lower) and not any(
-            w in lower for w in ("is", "check", "what", "?")
-        ):
+        # 4. Arm / Disarm Intent (Action commands or polite requests like 'could you arm the system?')
+        if re.search(r"\b(arm|disarm)\b", lower):
             is_disarm = "disarm" in lower
             state = self.services.get("state")
             bus = self.services.get("bus")

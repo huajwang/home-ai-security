@@ -254,22 +254,22 @@ def set_armed_tool(
     """Arm or disarm the security system."""
     changed = hub_state.set_armed(armed)
     status_str = "armed" if armed else "disarmed"
-    if changed and bus and hasattr(bus, "publish"):
-        import asyncio
+    if bus:
+        payload = {
+            "type": "armed_changed",
+            "armed": armed,
+            "actor": actor,
+        }
+        if hasattr(bus, "publish_threadsafe"):
+            bus.publish_threadsafe(payload)
+        elif hasattr(bus, "publish"):
+            import asyncio
 
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(
-                bus.publish(
-                    {
-                        "type": "armed_changed",
-                        "armed": armed,
-                        "actor": actor,
-                    }
-                )
-            )
-        except RuntimeError:
-            pass
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(bus.publish(payload))
+            except RuntimeError:
+                pass
 
     return {
         "armed": armed,
