@@ -53,3 +53,8 @@ data class LockStatus(
     val updatedAt: String,
     val adapter: String
 )
+
+data class AssistantResponse(
+    val response: String,
+    val toolUsed: String
+)

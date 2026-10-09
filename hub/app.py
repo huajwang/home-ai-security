@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from hub import config
-from hub.api import auth, calls, driveway, events, lights, lock, system
+from hub.api import assistant, auth, calls, driveway, events, lights, lock, system
 from hub.auth import bootstrap_owner
 from hub.devices.doorbell import DoorbellWorker
 from hub.devices.driveway import DrivewayCamera
@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.unlock_limiter = RateLimiter(config.UNLOCK_RATE_LIMIT)
 
     loop = asyncio_loop()
+    bus.loop = loop
     bulb.start()
     vision.start(loop)
     doorbell.start(loop)
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(lights.router)
     app.include_router(driveway.router)
     app.include_router(calls.router)
+    app.include_router(assistant.router)
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.is_dir():

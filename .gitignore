@@ -12,6 +12,8 @@ venv/
 # Hub data and model weights
 hub/data/
 tests/_tmp_data/
+tests/_tmp_assistant_data/
+models/
 *.pt
 *.onnx
 
@@ -23,6 +25,7 @@ certs/*.crt
 
 # Android
 android/.gradle/
+android/.kotlin/
 android/**/build/
 android/local.properties
 android/**/*.iml

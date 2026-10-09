@@ -134,6 +134,9 @@ class DoorbellWorker:
             snapshot_path = self.vision._save_snapshot(frame)
         event = self.store.add_event("doorbell", 1.0, snapshot_path, camera="door")
         print(f"Doorbell pressed event {event['id']}")
+        if config.DOORBELL_RECEPTIONIST:
+            from hub.devices.spoken_announcer import announce_async
+            announce_async(config.RECEPTIONIST_GREETING)
         if self.loop is None:
             return
         payload = {

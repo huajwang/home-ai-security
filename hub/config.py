@@ -51,6 +51,24 @@ TALKBACK_ENABLED = os.getenv("HUB_TALKBACK_ENABLED", "1" if CAMERA_URL else "0")
     "false",
     "False",
 }
+DOORBELL_RECEPTIONIST = os.getenv("HUB_DOORBELL_RECEPTIONIST", "1") not in {"0", "false", "False"}
+DOORBELL_DETERRENT = os.getenv("HUB_DOORBELL_DETERRENT", "1") not in {"0", "false", "False"}
+RECEPTIONIST_GREETING = os.getenv(
+    "HUB_RECEPTIONIST_GREETING",
+    "Hello! Someone will be with you shortly. If delivering a package, please leave it by the door.",
+)
+DETERRENT_WARNING = os.getenv(
+    "HUB_DETERRENT_WARNING",
+    "Security alert: You are on private property. Please step away immediately.",
+)
+PIPER_MODEL_PATH = os.getenv(
+    "HUB_PIPER_MODEL",
+    str(ROOT / "models/piper/en_US-lessac-medium.onnx"),
+)
+PIPER_CONFIG_PATH = os.getenv(
+    "HUB_PIPER_CONFIG",
+    str(ROOT / "models/piper/en_US-lessac-medium.onnx.json"),
+)
 ONVIF_PORT = int(os.getenv("HUB_ONVIF_PORT", "8000"))
 ALLOWED_LABELS = {
     item.strip()
@@ -79,6 +97,11 @@ ROI = (
 YOLO_MODEL = os.getenv("HUB_YOLO_MODEL", "yolov8n.pt")
 # Empty uses the RK3588 model installed with the NPU package, when that file exists.
 NPU_MODEL = os.getenv("HUB_NPU_MODEL", "").strip()
+
+# RKLLM Qwen language model on RK3588 NPU
+RKLLM_MODEL_PATH = os.getenv("HUB_RKLLM_MODEL", "/home/radxa/rkllm/qwen2.5-0.5b.rkllm").strip()
+RKLLM_LIB_PATH = os.getenv("HUB_RKLLM_LIB", "librkllmrt.so").strip()
+ASSISTANT_ENABLED = os.getenv("HUB_ASSISTANT_ENABLED", "1") not in {"0", "false", "False"}
 
 AUDIO_ENABLED = os.getenv("HUB_AUDIO_ENABLED", "1") not in {"0", "false", "False"}
 AUDIO_SAMPLE_RATE = int(os.getenv("HUB_AUDIO_RATE", "48000"))

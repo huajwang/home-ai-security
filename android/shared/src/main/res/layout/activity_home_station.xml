@@ -34,6 +34,14 @@
             android:text="Talk" />
 
         <Button
+            android:id="@+id/assistantVoice"
+            android:layout_width="0dp"
+            android:layout_height="72dp"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="Voice AI" />
+
+        <Button
             android:id="@+id/unlock"
             android:layout_width="0dp"
             android:layout_height="72dp"
