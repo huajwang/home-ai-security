@@ -177,7 +177,27 @@ class DoorTalkback:
                 except queue.Full:
                     pass
 
-    def close(self) -> None:
+    def flush(self) -> None:
+        """Send any remaining partial frame padded with silence."""
+        if self._stop.is_set():
+            return
+        if self._pending:
+            silence_val = self._encode(np.zeros(1, dtype=np.int16))[0]
+            pad_needed = G711_FRAME - len(self._pending)
+            self._pending.extend(bytes([silence_val] * pad_needed))
+            frame = bytes(self._pending[:G711_FRAME])
+            self._pending.clear()
+            try:
+                self._out.put(frame, timeout=0.5)
+            except queue.Full:
+                pass
+
+    def close(self, drain: bool = True) -> None:
+        if drain:
+            self.flush()
+            deadline = time.time() + 1.5
+            while not self._out.empty() and time.time() < deadline:
+                time.sleep(0.05)
         self._stop.set()
         try:
             self._out.put_nowait(None)

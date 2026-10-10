@@ -41,7 +41,7 @@ def test_speak_to_doorbell_mocked():
         res = speak_to_doorbell("Security alert")
         assert res is True
         mock_session.start.assert_called_once()
-        assert mock_session.write_pcm8k.call_count == 2
+        assert mock_session.write_pcm8k.call_count > 2
         mock_session.close.assert_called_once()
 
 

@@ -229,6 +229,8 @@ class VisionWorker:
         visit_notified = False
         lingering_since: float | None = None
         deterrent_spoken = False
+        target_confirmed = False
+        last_seen_person = 0.0
         last_id = -1
         roi_x1, roi_y1, roi_x2, roi_y2 = config.ROI
 
@@ -268,17 +270,21 @@ class VisionWorker:
                     2,
                 )
 
+            now = time.time()
             if target_count > 0:
                 person_streak += 1
+                last_seen_person = now
                 self.state.mark_person(best_conf)
+                if person_streak >= config.FRAMES_REQUIRED_FOR_ALERT:
+                    target_confirmed = True
             else:
                 person_streak = 0
 
-            target_confirmed = person_streak >= config.FRAMES_REQUIRED_FOR_ALERT
-            now = time.time()
+            # Stay confirmed across brief frame drops (up to 2.5s) so slight motion/lighting doesn't flap state
+            person_present = target_confirmed and (now - last_seen_person < 2.5)
             snap = self.state.snapshot()
 
-            if target_confirmed and not visit_notified:
+            if person_present and not visit_notified:
                 if now - last_alarm_time >= config.ALARM_COOLDOWN_SECONDS:
                     visit_notified = True
                     last_alarm_time = now
@@ -306,7 +312,7 @@ class VisionWorker:
                         }
                     )
 
-            if target_confirmed and snap["armed"]:
+            if person_present and snap["armed"]:
                 if lingering_since is None:
                     lingering_since = now
                 elif now - lingering_since >= 5.0 and not deterrent_spoken:
@@ -317,7 +323,8 @@ class VisionWorker:
                         announce_async(config.DETERRENT_WARNING)
                         print("Lingering armed person -> Spoke deterrent warning.")
 
-            if not target_confirmed:
+            if not person_present:
+                target_confirmed = False
                 visit_notified = False
                 lingering_since = None
                 deterrent_spoken = False

@@ -92,7 +92,23 @@ def speak_to_doorbell(text: str, camera_url: Optional[str] = None) -> bool:
         logger.warning("No audio synthesized for: %s", text)
         return False
 
-    logger.info("Speaking to doorbell speaker: '%s' (%d samples)", text, len(pcm))
+    # Pad audio with leading and trailing silence:
+    # 1. Leading silence (0.6s) primes the Reolink backchannel jitter buffer and
+    #    allows the speaker amplifier circuit to unmute before the first spoken word,
+    #    preventing "Security alert:" or the opening greeting from being clipped.
+    # 2. Trailing silence (1.2s) ensures all speech samples play out through the
+    #    doorbell speaker hardware buffer before RTSP TEARDOWN shuts down the channel,
+    #    preventing the final words (e.g. "immediately") from being truncated.
+    leading_silence = np.zeros(int(8000 * 0.6), dtype=np.int16)
+    trailing_silence = np.zeros(int(8000 * 1.2), dtype=np.int16)
+    padded_pcm = np.concatenate([leading_silence, pcm, trailing_silence])
+
+    logger.info(
+        "Speaking to doorbell speaker: '%s' (%d samples, padded %d)",
+        text,
+        len(pcm),
+        len(padded_pcm),
+    )
     session = TalkbackSession(url)
     if not session.start():
         logger.warning("Failed to start talkback session for doorbell.")
@@ -101,13 +117,16 @@ def speak_to_doorbell(text: str, camera_url: Optional[str] = None) -> bool:
     try:
         # Feed in chunks of 1024 samples (128ms)
         chunk_size = 1024
-        for i in range(0, len(pcm), chunk_size):
-            chunk = pcm[i : i + chunk_size]
+        for i in range(0, len(padded_pcm), chunk_size):
+            chunk = padded_pcm[i : i + chunk_size]
             session.write_pcm8k(chunk)
             time.sleep(0.12)  # Pace sending close to real time
 
-        # Wait for remaining audio to play out
-        time.sleep(0.6)
+        if hasattr(session, "flush"):
+            session.flush()
+
+        # Wait for remaining audio to play out of the speaker buffer
+        time.sleep(1.0)
         return True
     finally:
         session.close()
