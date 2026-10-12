@@ -54,6 +54,9 @@ def advertised_hub_urls() -> list[str]:
     urls = [f"https://127.0.0.1:{config.PORT}", f"https://localhost:{config.PORT}"]
     for addr in local_ipv4s():
         urls.append(f"https://{addr}:{config.PORT}")
+    if getattr(config, "HTTP_PORT", 0) > 0:
+        for addr in local_ipv4s():
+            urls.append(f"http://{addr}:{config.HTTP_PORT} (Tailscale/LAN HTTP)")
     return urls
 
 
@@ -78,7 +81,9 @@ def _should_keep_existing(cert_path: Path) -> bool:
     except Exception:
         return False
     issuer = cert.issuer.rfc4514_string().lower()
-    if "mkcert" in issuer:
+    if "mkcert" in issuer or "let's encrypt" in issuer or "tailscale" in issuer:
+        return True
+    if _OUR_CN.lower() not in issuer:
         return True
     needed = set(local_ipv4s())
     needed.add(_LOOPBACK)
@@ -122,6 +127,9 @@ def _write_self_signed(cert_path: Path, key_path: Path) -> None:
         .serial_number(x509.random_serial_number())
         .not_valid_before(now)
         .not_valid_after(now + dt.timedelta(days=825))
+        .add_extension(
+            x509.BasicConstraints(ca=True, path_length=None), critical=True
+        )
         .add_extension(x509.SubjectAlternativeName(names), critical=False)
         .sign(key, hashes.SHA256())
     )

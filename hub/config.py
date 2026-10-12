@@ -17,6 +17,11 @@ KEY_FILE = CERT_DIR / "hub-key.pem"
 
 HOST = os.getenv("HUB_HOST", "0.0.0.0")
 PORT = int(os.getenv("HUB_PORT", "8443"))
+HTTP_PORT = (
+    int(os.getenv("HUB_HTTP_PORT", "8080"))
+    if os.getenv("HUB_HTTP_PORT", "8080").strip() not in {"0", "", "none", "None"}
+    else 0
+)
 HOME_NAME = os.getenv("HUB_HOME_NAME", "Home")
 
 JWT_SECRET = os.getenv("HUB_JWT_SECRET", "").strip()

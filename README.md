@@ -26,6 +26,7 @@ Sign in as `owner` / `changeme` (change this). HTTPS listens on port **8443**.
 - API contract: [docs/v1-api.md](docs/v1-api.md)
 - TLS, Tailscale, Android, lock swap: [docs/setup.md](docs/setup.md)
 - Android project: [android/README.md](android/README.md)
+- iOS project (iPhone): [ios-app/README.md](ios-app/README.md)
 
 ## v1 cut
 

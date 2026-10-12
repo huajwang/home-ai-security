@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 
 from hub.api.deps import current_principal, get_services
+from hub.errors import raise_api
 
 router = APIRouter(prefix="/v1/system", tags=["system"])
 
@@ -40,6 +42,22 @@ def get_system(
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
     return _system_body(services)
+
+
+@router.get("/snapshot")
+def get_door_snapshot(
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> Response:
+    vision = services.get("vision")
+    frame = vision.latest_bgr() if vision is not None else None
+    if frame is None:
+        raise_api(409, "no_frame", "Camera has no picture yet")
+    import cv2
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    if not ok:
+        raise_api(500, "encode_error", "Failed to encode snapshot")
+    return Response(content=buf.tobytes(), media_type="image/jpeg")
 
 
 @router.post("/arm")
