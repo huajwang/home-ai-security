@@ -134,15 +134,21 @@ class ZigbeeLights:
         return lights
 
     async def _set_on(self, turn_on: bool, ieee: str | None) -> dict[str, Any]:
+        target_ieee = ieee or config.DOOR_LIGHT or None
         matches = _light_endpoints(self._app)
-        if ieee:
-            matches = [(device, endpoint) for device, endpoint in matches if str(device.ieee) == ieee]
+        if target_ieee:
+            targeted = [(device, endpoint) for device, endpoint in matches if str(device.ieee).lower() == target_ieee.lower()]
+            if targeted:
+                matches = targeted
+            elif ieee:
+                raise LookupError(f"Zigbee bulb {ieee} is not paired")
         if not matches:
             raise LookupError("No Zigbee bulb is paired")
         state = "on" if turn_on else "off"
         reached: list[str] = []
         missed: list[str] = []
-        for device, endpoint in matches:
+
+        async def _send_one(device: Any, endpoint: Any) -> tuple[str, bool]:
             try:
                 cluster = endpoint.in_clusters[ON_OFF_CLUSTER]
                 command = getattr(cluster, "on" if turn_on else "off", None)
@@ -150,11 +156,19 @@ class ZigbeeLights:
                     await cluster.command(0x01 if turn_on else 0x00)
                 else:
                     await command()
-                reached.append(str(device.ieee))
                 print(f"Zigbee light {device.ieee} {state}")
+                return str(device.ieee), True
             except Exception as exc:  # noqa: BLE001
-                missed.append(str(device.ieee))
                 print(f"Zigbee light {device.ieee} {state} failed: {exc}")
+                return str(device.ieee), False
+
+        results = await asyncio.gather(*[_send_one(d, ep) for d, ep in matches])
+        for dev_ieee, ok in results:
+            if ok:
+                reached.append(dev_ieee)
+            else:
+                missed.append(dev_ieee)
+
         if not reached:
             raise RuntimeError(f"No bulb acknowledged the {state} command")
         return {

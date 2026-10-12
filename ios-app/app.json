@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Home AI Security",
+    "slug": "home-ai-security",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "homeai",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.homeai.security.ios",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID or Touch ID to securely confirm unlocking the door.",
+        "NSCameraUsageDescription": "Allows video streaming for the security camera and doorbell.",
+        "NSMicrophoneUsageDescription": "Allows speaking through the doorbell intercom."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      },
+      "package": "com.homeai.security.ios"
+    }
+  }
+}

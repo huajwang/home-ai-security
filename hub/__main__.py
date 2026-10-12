@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 import uvicorn
@@ -10,15 +11,8 @@ from hub import config
 from hub.tls import advertised_hub_urls, ensure_tls_files
 
 
-def main() -> None:
-    config.ensure_dirs()
-    cert, key = ensure_tls_files()
-    os.chdir(config.ROOT)
-    print("Hub URLs for the Android phone:")
-    for url in advertised_hub_urls():
-        print(f"  {url}")
-    print("Sign in as owner / changeme, then tap Talk for the camera stream.")
-    uvicorn.run(
+async def _run_servers(cert, key) -> None:
+    https_cfg = uvicorn.Config(
         "hub.app:app",
         host=config.HOST,
         port=config.PORT,
@@ -26,6 +20,45 @@ def main() -> None:
         ssl_keyfile=str(key),
         reload=False,
     )
+    https_server = uvicorn.Server(https_cfg)
+    tasks = [https_server.serve()]
+
+    if config.HTTP_PORT > 0:
+        http_cfg = uvicorn.Config(
+            "hub.app:app",
+            host=config.HOST,
+            port=config.HTTP_PORT,
+            reload=False,
+        )
+        http_server = uvicorn.Server(http_cfg)
+        tasks.append(http_server.serve())
+
+    await asyncio.gather(*tasks)
+
+
+def main() -> None:
+    config.ensure_dirs()
+    cert, key = ensure_tls_files()
+    os.chdir(config.ROOT)
+    print("Hub URLs for Android & iOS:")
+    for url in advertised_hub_urls():
+        print(f"  {url}")
+    print("Sign in as owner / changeme, then tap Talk for the camera stream.")
+
+    if config.HTTP_PORT > 0:
+        try:
+            asyncio.run(_run_servers(cert, key))
+        except KeyboardInterrupt:
+            pass
+    else:
+        uvicorn.run(
+            "hub.app:app",
+            host=config.HOST,
+            port=config.PORT,
+            ssl_certfile=str(cert),
+            ssl_keyfile=str(key),
+            reload=False,
+        )
 
 
 if __name__ == "__main__":
