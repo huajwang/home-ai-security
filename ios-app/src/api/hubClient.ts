@@ -287,6 +287,8 @@ export class HubClient {
       ts: item.ts,
       label: item.label,
       confidence: item.confidence ?? 0.0,
+      maskDetected: Boolean(item.mask_detected),
+      maskStatus: item.mask_status || (item.mask_detected ? 'masked' : 'unmasked'),
       snapshotUrl: item.snapshot_url && item.snapshot_url !== 'null' ? item.snapshot_url : null,
       camera: item.camera && item.camera !== 'null' ? item.camera : null,
     }));

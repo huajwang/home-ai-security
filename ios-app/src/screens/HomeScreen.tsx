@@ -671,6 +671,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
                     <View>
                       <View style={styles.eventTitleRow}>
                         <Text style={styles.eventLabel}>{item.label}</Text>
+                        {item.maskDetected && (
+                          <View style={styles.maskBadge}>
+                            <Text style={styles.maskBadgeText}>MASK</Text>
+                          </View>
+                        )}
                         <Text style={styles.eventConfidence}>
                           {(item.confidence * 100).toFixed(0)}%
                         </Text>
@@ -1135,6 +1140,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  maskBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  maskBadgeText: {
+    color: '#F87171',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   eventLabel: {
     fontSize: 14,

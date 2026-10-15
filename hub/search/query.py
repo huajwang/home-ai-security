@@ -48,6 +48,8 @@ _FILLERS = {
     "a", "an", "at", "the", "in", "on", "of", "to", "my", "me", "was", "were", "there",
     "any", "this", "show", "find", "please", "last", "yesterday", "today", "door",
     "doorbell", "front", "driveway", "morning", "afternoon", "evening", "night",
+    "who", "did", "wearing", "wear", "wore", "with", "without", "face", "covered",
+    "covering", "masks", "mask", "masked", "unmasked",
 }
 
 
@@ -58,6 +60,7 @@ class EventQuery:
     start: str | None
     end: str | None
     understood: bool
+    mask_detected: bool | None = None
 
     def as_dict(self) -> dict[str, str | None | bool]:
         return {
@@ -65,6 +68,7 @@ class EventQuery:
             "camera": self.camera,
             "start": self.start,
             "end": self.end,
+            "mask_detected": self.mask_detected,
             "understood": self.understood,
         }
 
@@ -85,6 +89,19 @@ def parse_question(text: str, now: datetime | None = None) -> EventQuery:
     elif any(word in words for word in ("door", "doorbell", "front")):
         camera = "door"
 
+    mask_detected: bool | None = None
+    if any(w in words for w in ("masked", "mask", "masks", "covering", "balaclava")) and not any(
+        w in words for w in ("unmasked", "no", "without")
+    ):
+        mask_detected = True
+    elif any(w in words for w in ("unmasked", "bare")) or (
+        "no" in words and any(w in words for w in ("mask", "masks"))
+    ) or ("without" in words and any(w in words for w in ("mask", "masks"))):
+        mask_detected = False
+
+    if mask_detected is not None and label is None:
+        label = "person"
+
     day = _day(words, moment)
     part = _first(words, {name: name for name in _PARTS})
     start, end = _window(day, part, moment)
@@ -93,10 +110,12 @@ def parse_question(text: str, now: datetime | None = None) -> EventQuery:
         for word in words
         if word not in _FILLERS and word not in _LABELS and word not in _WEEKDAYS
     ]
-    understood = not unknown and any(value is not None for value in (label, camera, start))
+    understood = not unknown and any(
+        value is not None for value in (label, camera, start, mask_detected)
+    )
     if not understood:
-        return EventQuery(None, None, None, None, False)
-    return EventQuery(label, camera, _iso(start), _iso(end), understood)
+        return EventQuery(None, None, None, None, False, None)
+    return EventQuery(label, camera, _iso(start), _iso(end), understood, mask_detected)
 
 
 def _first(words: list[str], table: dict[str, str]) -> str | None:

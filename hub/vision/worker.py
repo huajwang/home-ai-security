@@ -16,6 +16,7 @@ from hub import config
 from hub.notify import EventBus
 from hub.state import HubState
 from hub.storage import Store
+from hub.vision.mask import shared_mask_detector
 from hub.vision.people import shared_detector
 from hub.vision.visits import ObjectVisits
 
@@ -223,10 +224,12 @@ class VisionWorker:
             return
 
         print(f"Vision watching for: {sorted(config.ALLOWED_LABELS)}")
+        mask_detector = shared_mask_detector() if config.MASK_DETECTION_ENABLED else None
         other_visits = ObjectVisits()
         person_streak = 0
         last_alarm_time = 0.0
         visit_notified = False
+        mask_detected_in_visit = False
         lingering_since: float | None = None
         deterrent_spoken = False
         target_confirmed = False
@@ -254,21 +257,44 @@ class VisionWorker:
                     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                     if not (roi_x1 <= cx <= roi_x2 and roi_y1 <= cy <= roi_y2):
                         continue
+                is_masked = False
+                mask_res = None
                 if label in config.ALLOWED_LABELS:
                     target_count += 1
                     best_conf = max(best_conf, confidence)
+                    if mask_detector is not None:
+                        mask_res = mask_detector.detect_mask(frame, (x1, y1, x2, y2))
+                        if mask_res.masked:
+                            is_masked = True
+                            mask_detected_in_visit = True
                 elif label in config.RECORD_LABELS:
                     seen_other[label] = max(seen_other.get(label, 0.0), confidence)
-                cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(
-                    display,
-                    f"{label} {confidence:.2f}",
-                    (x1, y1 - 10 if y1 > 20 else y1 + 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (255, 255, 255),
-                    2,
-                )
+
+                if is_masked:
+                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 140, 255), 2)
+                    cv2.putText(
+                        display,
+                        f"{label} [MASK] {confidence:.2f}",
+                        (x1, y1 - 10 if y1 > 20 else y1 + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 140, 255),
+                        2,
+                    )
+                    if mask_res and mask_res.face_box:
+                        fx1, fy1, fx2, fy2 = mask_res.face_box
+                        cv2.rectangle(display, (fx1, fy1), (fx2, fy2), (0, 69, 255), 2)
+                else:
+                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(
+                        display,
+                        f"{label} {confidence:.2f}",
+                        (x1, y1 - 10 if y1 > 20 else y1 + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (255, 255, 255),
+                        2,
+                    )
 
             now = time.time()
             if target_count > 0:
@@ -297,8 +323,10 @@ class VisionWorker:
                         best_conf,
                         snapshot_path,
                         camera="door",
+                        mask_detected=mask_detected_in_visit,
                     )
-                    print(f"Person event {event['id']} confidence={best_conf:.2f}")
+                    mask_tag = " [MASK DETECTED]" if mask_detected_in_visit else ""
+                    print(f"Person event {event['id']}{mask_tag} confidence={best_conf:.2f}")
                     self._publish(
                         {
                             "type": "person_at_door",
@@ -307,6 +335,8 @@ class VisionWorker:
                                 "ts": event["ts"],
                                 "label": event["label"],
                                 "confidence": event["confidence"],
+                                "mask_detected": bool(event.get("mask_detected", 0)),
+                                "mask_status": "masked" if event.get("mask_detected") else "unmasked",
                                 "snapshot_url": f"/v1/events/{event['id']}/snapshot",
                             },
                         }
@@ -315,7 +345,10 @@ class VisionWorker:
             if person_present and snap["armed"]:
                 if lingering_since is None:
                     lingering_since = now
-                elif now - lingering_since >= 5.0 and not deterrent_spoken:
+                elif (
+                    (now - lingering_since >= 5.0 or (mask_detected_in_visit and now - lingering_since >= 2.0))
+                    and not deterrent_spoken
+                ):
                     deterrent_spoken = True
                     if config.DOORBELL_DETERRENT:
                         from hub.devices.spoken_announcer import announce_async
@@ -326,6 +359,7 @@ class VisionWorker:
             if not person_present:
                 target_confirmed = False
                 visit_notified = False
+                mask_detected_in_visit = False
                 lingering_since = None
                 deterrent_spoken = False
                 if snap["alarm_active"] and self.state.set_alarm(False):

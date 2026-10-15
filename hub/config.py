@@ -103,6 +103,11 @@ YOLO_MODEL = os.getenv("HUB_YOLO_MODEL", "yolov8n.pt")
 # Empty uses the RK3588 model installed with the NPU package, when that file exists.
 NPU_MODEL = os.getenv("HUB_NPU_MODEL", "").strip()
 
+# Face mask and covering detection
+MASK_DETECTION_ENABLED = os.getenv("HUB_MASK_DETECTION_ENABLED", "1") not in {"0", "false", "False"}
+MASK_CONFIDENCE_THRESHOLD = float(os.getenv("HUB_MASK_THRESHOLD", "0.50"))
+MASK_MODEL = os.getenv("HUB_MASK_MODEL", "").strip()
+
 # RKLLM Qwen language model on RK3588 NPU
 RKLLM_MODEL_PATH = os.getenv("HUB_RKLLM_MODEL", "/home/radxa/rkllm/qwen2.5-0.5b.rkllm").strip()
 RKLLM_LIB_PATH = os.getenv("HUB_RKLLM_LIB", "librkllmrt.so").strip()

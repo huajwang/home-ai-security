@@ -84,12 +84,15 @@ def require_unlock(principal: dict[str, Any] = Depends(current_principal)) -> di
 
 
 def event_payload(event: dict[str, Any]) -> dict[str, Any]:
+    mask_detected = bool(event.get("mask_detected", 0))
     return {
         "id": event["id"],
         "ts": event["ts"],
         "label": event["label"],
         "camera": event.get("camera"),
         "confidence": event["confidence"],
+        "mask_detected": mask_detected,
+        "mask_status": "masked" if mask_detected else "unmasked",
         "snapshot_url": f"/v1/events/{event['id']}/snapshot" if event.get("snapshot_path") else None,
         "clip_url": f"/v1/events/{event['id']}/clip" if event.get("clip_path") else None,
     }

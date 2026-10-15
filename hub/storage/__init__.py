@@ -106,6 +106,8 @@ class Store:
                     "UPDATE events SET camera = 'driveway' WHERE label = 'driveway' AND camera IS NULL"
                 )
                 cur.execute("UPDATE events SET camera = 'door' WHERE camera IS NULL")
+            if "mask_detected" not in cols:
+                cur.execute("ALTER TABLE events ADD COLUMN mask_detected INTEGER DEFAULT 0")
 
     def get_kv(self, key: str) -> str | None:
         with self.cursor() as cur:
@@ -207,12 +209,13 @@ class Store:
         snapshot_path: str | None,
         clip_path: str | None = None,
         camera: str | None = None,
+        mask_detected: bool = False,
     ) -> dict[str, Any]:
         now = utcnow()
         with self.cursor() as cur:
             cur.execute(
-                "INSERT INTO events(ts, label, confidence, snapshot_path, clip_path, camera) VALUES(?,?,?,?,?,?)",
-                (now, label, confidence, snapshot_path, clip_path, camera),
+                "INSERT INTO events(ts, label, confidence, snapshot_path, clip_path, camera, mask_detected) VALUES(?,?,?,?,?,?,?)",
+                (now, label, confidence, snapshot_path, clip_path, camera, 1 if mask_detected else 0),
             )
             event_id = cur.lastrowid
         return self.get_event(event_id)  # type: ignore[return-value]
@@ -224,6 +227,7 @@ class Store:
         start: str | None,
         end: str | None,
         limit: int,
+        mask_detected: bool | None = None,
     ) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 200))
         clauses: list[str] = []
@@ -242,6 +246,9 @@ class Store:
         if end:
             clauses.append("ts < ?")
             args.append(end)
+        if mask_detected is not None:
+            clauses.append("mask_detected = ?")
+            args.append(1 if mask_detected else 0)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self.cursor() as cur:
             rows = cur.execute(
@@ -255,19 +262,27 @@ class Store:
             row = cur.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
             return dict(row) if row else None
 
-    def list_events(self, since: str | None, limit: int) -> list[dict[str, Any]]:
+    def list_events(
+        self,
+        since: str | None,
+        limit: int,
+        mask_detected: bool | None = None,
+    ) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 200))
+        clauses: list[str] = []
+        args: list[Any] = []
+        if since:
+            clauses.append("ts > ?")
+            args.append(since)
+        if mask_detected is not None:
+            clauses.append("mask_detected = ?")
+            args.append(1 if mask_detected else 0)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self.cursor() as cur:
-            if since:
-                rows = cur.execute(
-                    "SELECT * FROM events WHERE ts > ? ORDER BY id DESC LIMIT ?",
-                    (since, limit),
-                ).fetchall()
-            else:
-                rows = cur.execute(
-                    "SELECT * FROM events ORDER BY id DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
+            rows = cur.execute(
+                f"SELECT * FROM events{where} ORDER BY id DESC LIMIT ?",
+                (*args, limit),
+            ).fetchall()
             return [dict(row) for row in rows]
 
     def add_lock_audit(

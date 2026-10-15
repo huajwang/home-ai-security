@@ -39,6 +39,8 @@ export interface DoorEvent {
   ts: string;
   label: string;
   confidence: number;
+  maskDetected?: boolean;
+  maskStatus?: string;
   snapshotUrl?: string | null;
   camera?: string | null;
 }

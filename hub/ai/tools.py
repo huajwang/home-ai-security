@@ -81,6 +81,7 @@ def get_security_briefing(
             last_event = ev
 
     # Build spoken summary text
+    masked_count = sum(1 for ev in events if bool(ev.get("mask_detected")))
     if total_count == 0:
         summary = f"Security briefing for {label_name}: All quiet. No events were detected."
     else:
@@ -102,9 +103,15 @@ def get_security_briefing(
             except Exception:
                 pass
 
+        mask_warning = (
+            f" Note: {masked_count} event{'s' if masked_count > 1 else ''} involved a person wearing a mask or face covering."
+            if masked_count > 0
+            else ""
+        )
+
         summary = (
             f"Security briefing for {label_name}: {total_count} total event"
-            f"{'s' if total_count != 1 else ''} recorded, including {breakdown}.{latest_str}"
+            f"{'s' if total_count != 1 else ''} recorded, including {breakdown}.{latest_str}{mask_warning}"
         )
 
     return {
@@ -131,6 +138,7 @@ def search_events_tool(
             start=parsed.start,
             end=parsed.end,
             limit=20,
+            mask_detected=parsed.mask_detected,
         )
     else:
         # Fallback keyword extraction if strict parse_question wasn't fully understood
@@ -153,6 +161,19 @@ def search_events_tool(
         elif any(k in words for k in ("door", "doorbell", "front")):
             camera = "door"
 
+        mask_detected = None
+        if any(w in words for w in ("masked", "mask", "covering", "balaclava")) and not any(
+            w in words for w in ("unmasked", "no", "without")
+        ):
+            mask_detected = True
+        elif any(w in words for w in ("unmasked", "bare")) or (
+            "no" in words and any(w in words for w in ("mask", "masks"))
+        ) or ("without" in words and any(w in words for w in ("mask", "masks"))):
+            mask_detected = False
+
+        if mask_detected is not None and label is None:
+            label = "person"
+
         start_iso, end_iso, _ = parse_timeframe_window(query, now)
         events = store.search_events(
             label=label,
@@ -160,6 +181,7 @@ def search_events_tool(
             start=start_iso,
             end=end_iso,
             limit=20,
+            mask_detected=mask_detected,
         )
 
     count = len(events)
@@ -171,12 +193,13 @@ def search_events_tool(
             lbl = ev.get("label", "event")
             cam = ev.get("camera", "camera")
             ts = ev.get("ts", "")
+            mask_tag = " (masked)" if bool(ev.get("mask_detected")) else ""
             try:
                 dt = datetime.fromisoformat(ts)
                 t_str = dt.strftime("%I:%M %p")
             except Exception:
                 t_str = ts
-            details.append(f"{lbl} at {cam} around {t_str}")
+            details.append(f"{lbl}{mask_tag} at {cam} around {t_str}")
         summary = f"Found {count} event{'s' if count != 1 else ''}: " + "; ".join(details) + "."
 
     return {

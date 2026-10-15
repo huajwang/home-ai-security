@@ -92,6 +92,25 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ event, visible, on
           </View>
 
           <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Face Mask</Text>
+            <View
+              style={[
+                styles.badge,
+                event.maskDetected ? styles.maskBadgeAlert : styles.maskBadgeClear,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  event.maskDetected ? styles.maskTextAlert : styles.maskTextClear,
+                ]}
+              >
+                {event.maskDetected ? '⚠️ Detected (Covered)' : 'None (Unmasked)'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>AI Confidence</Text>
             <Text style={styles.detailValue}>{(event.confidence * 100).toFixed(1)}%</Text>
           </View>
@@ -201,5 +220,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#60A5FA',
     textTransform: 'capitalize',
+  },
+  maskBadgeAlert: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  maskBadgeClear: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+  },
+  maskTextAlert: {
+    color: '#F87171',
+    textTransform: 'none',
+  },
+  maskTextClear: {
+    color: '#4ADE80',
+    textTransform: 'none',
   },
 });

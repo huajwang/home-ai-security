@@ -11,8 +11,7 @@ venv/
 
 # Hub data and model weights
 hub/data/
-tests/_tmp_data/
-tests/_tmp_assistant_data/
+tests/_tmp*/
 models/
 *.pt
 *.onnx
