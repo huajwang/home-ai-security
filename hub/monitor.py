@@ -233,10 +233,14 @@ def _encode_jpeg(frame: np.ndarray) -> bytes | None:
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_bytes(payload)
-    os.chmod(temporary, 0o600)
-    os.replace(temporary, path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(f".tmp.{os.getpid()}")
+        temporary.write_bytes(payload)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except OSError:
+        pass
 
 
 def screen_size() -> tuple[int, int]:

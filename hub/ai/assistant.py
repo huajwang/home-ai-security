@@ -3,19 +3,23 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, Optional
 
+from hub.ai.intents import NONE, SEARCH_EVENTS, intent_prompt, parse_intent_label
 from hub.ai.rkllm_bridge import get_runner
+from hub.ai.rules import match_rule
 from hub.ai.tools import (
     control_light_tool,
     get_device_status,
+    speak_device_status,
     get_security_briefing,
     search_events_tool,
     set_armed_tool,
 )
 
 logger = logging.getLogger("home_ai.assistant")
+
+CLASSIFY_MAX_TOKENS = 16
 
 SYSTEM_VOICE_PROMPT = (
     "You are the Home AI security voice assistant. You are concise, polite, "
@@ -35,76 +39,45 @@ class AssistantEngine:
     ) -> dict[str, Any]:
         """Process user text prompt, apply guardrails, invoke tools, and synthesize speech answer."""
         text = prompt.strip()
-        lower = text.lower()
+        hit = match_rule(text)
 
-        # 1. Security Guardrail: Deadbolt Unlock is STRICTLY FORBIDDEN via Voice
-        if re.search(r"\b(unlock|open)\b.*\b(door|deadbolt|lock)\b", lower) or re.search(
-            r"\b(unlock|open)\b", lower
-        ):
-            if "status" not in lower and "check" not in lower and "is" not in lower:
-                return {
-                    "response": (
-                        "Unlocking the deadbolt is not permitted via voice assistant for security reasons. "
-                        "Please use the mobile app with biometric confirmation."
-                    ),
-                    "tool_used": "guardrail_unlock_blocked",
-                    "tool_data": {"action": "unlock_rejected"},
-                }
+        if hit and hit.tool == "guardrail_unlock_blocked":
+            return {
+                "response": (
+                    "Unlocking the deadbolt is not permitted via voice assistant for security reasons. "
+                    "Please use the mobile app with biometric confirmation."
+                ),
+                "tool_used": "guardrail_unlock_blocked",
+                "tool_data": {"action": "unlock_rejected"},
+            }
 
-        # 2. Light Control Intent
-        if re.search(r"\b(turn|switch)\s+(on|off)\b.*\b(light|bulb|porch|door)\b", lower) or re.search(
-            r"\b(light|bulb|porch|door)\b.*\b(on|off)\b", lower
-        ):
-            turn_on = "on" in lower.split() or "turn on" in lower or "switch on" in lower
+        if hit and hit.tool == "control_light":
             lights = self.services.get("lights")
-            result = control_light_tool(lights, turn_on=turn_on)
+            result = control_light_tool(lights, turn_on=bool(hit.turn_on))
             return {
                 "response": result["summary"],
                 "tool_used": "control_light",
                 "tool_data": result,
             }
 
-        # 3. Device Status / Lock / Armed Inspection Intent (queries take precedence over commands)
-        is_status_query = (
-            any(
-                phrase in lower
-                for phrase in (
-                    "status",
-                    "is the door locked",
-                    "is the front door locked",
-                    "is it locked",
-                    "check the lock",
-                    "check system",
-                    "system status",
-                    "how is the system",
-                )
-            )
-            or re.search(r"\b(is|are|check|what|tell me if)\b.*\b(armed|locked)\b", lower) is not None
-            or re.search(r"\b(armed|locked)\b.*\b(or not|\?)\b", lower) is not None
-        )
-
-        if is_status_query:
+        if hit and hit.tool == "device_status":
             state = self.services.get("state")
             lock = self.services.get("lock")
             lights = self.services.get("lights")
             if state:
                 status_res = get_device_status(state, lock, lights)
-                tool_summary = status_res["summary"]
-                spoken = self._synthesize(prompt, tool_summary, history)
                 return {
-                    "response": spoken or tool_summary,
+                    "response": speak_device_status(status_res, prompt),
                     "tool_used": "device_status",
                     "tool_data": status_res,
                 }
 
-        # 4. Arm / Disarm Intent (Action commands or polite requests like 'could you arm the system?')
-        if re.search(r"\b(arm|disarm)\b", lower):
-            is_disarm = "disarm" in lower
+        if hit and hit.tool == "arm_system":
             state = self.services.get("state")
             bus = self.services.get("bus")
             if state:
                 result = set_armed_tool(
-                    state, bus, actor=self.actor, armed=not is_disarm
+                    state, bus, actor=self.actor, armed=bool(hit.armed)
                 )
                 return {
                     "response": result["summary"],
@@ -112,30 +85,11 @@ class AssistantEngine:
                     "tool_data": result,
                 }
 
-        # 5. Security Briefing Intent
-        if any(
-            phrase in lower
-            for phrase in (
-                "briefing",
-                "security briefing",
-                "what happened",
-                "security report",
-                "daily report",
-                "summary of events",
-                "give me a briefing",
-            )
-        ):
-            timeframe = "today"
-            for tf in ("yesterday", "last night", "this morning", "this afternoon", "past week", "today"):
-                if tf in lower:
-                    timeframe = tf
-                    break
-
+        if hit and hit.tool == "security_briefing":
             store = self.services.get("store")
             if store:
-                briefing_res = get_security_briefing(store, timeframe=timeframe)
+                briefing_res = get_security_briefing(store, timeframe=hit.timeframe or "today")
                 tool_summary = briefing_res["summary"]
-                # Synthesize with Qwen if available
                 spoken = self._synthesize(prompt, tool_summary, history)
                 return {
                     "response": spoken or tool_summary,
@@ -143,33 +97,18 @@ class AssistantEngine:
                     "tool_data": briefing_res,
                 }
 
-        # 6. Natural Event Search Intent
-        if any(
-            phrase in lower
-            for phrase in (
-                "who came",
-                "who was",
-                "did anyone",
-                "any visitors",
-                "any cars",
-                "at the door",
-                "in the driveway",
-                "find events",
-                "search events",
-            )
-        ):
-            store = self.services.get("store")
-            if store:
-                search_res = search_events_tool(store, query=text)
-                tool_summary = search_res["summary"]
-                spoken = self._synthesize(prompt, tool_summary, history)
-                return {
-                    "response": spoken or tool_summary,
-                    "tool_used": "search_events",
-                    "tool_data": search_res,
-                }
+        if hit and hit.tool == "search_events":
+            answered = self._answer_search(text, prompt, history, routed_by="rule")
+            if answered:
+                return answered
 
-        # 7. General Assistant / Conversational Query
+        # Rules missed. The fixed table may still pick 查事件.
+        if self.services.get("store") and self._classify_intent(text) == SEARCH_EVENTS.label:
+            answered = self._answer_search(text, prompt, history, routed_by="intent_table")
+            if answered:
+                return answered
+
+        # 8. General Assistant / Conversational Query
         spoken = self._synthesize(prompt, context=None, history=history)
         if not spoken:
             spoken = "I received your request, but could not determine a specific security action."
@@ -178,6 +117,47 @@ class AssistantEngine:
             "tool_used": "general_llm",
             "tool_data": {},
         }
+
+    def _answer_search(
+        self,
+        text: str,
+        prompt: str,
+        history: Optional[list[dict[str, str]]],
+        routed_by: str,
+    ) -> Optional[dict[str, Any]]:
+        store = self.services.get("store")
+        if not store:
+            return None
+        del prompt, history
+        search_res = search_events_tool(store, query=text)
+        data = dict(search_res)
+        data["routed_by"] = routed_by
+        return {
+            "response": search_res["summary"],
+            "tool_used": SEARCH_EVENTS.label,
+            "tool_data": data,
+        }
+
+    def _classify_intent(self, prompt: str) -> str:
+        """Ask the model to pick one label from the fixed table."""
+        try:
+            runner = get_runner()
+            if not runner.is_available:
+                return NONE.label
+            raw = runner.chat(
+                [
+                    {"role": "system", "content": intent_prompt()},
+                    {"role": "user", "content": prompt},
+                ],
+                max_new_tokens=CLASSIFY_MAX_TOKENS,
+                timeout=10.0,
+            )
+            label = parse_intent_label(raw)
+            logger.info("Intent table classified %r as %s (raw=%r)", prompt, label, raw)
+            return label
+        except Exception as exc:
+            logger.warning("Intent classification error: %s", exc)
+            return NONE.label
 
     def _synthesize(
         self,

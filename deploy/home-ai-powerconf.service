@@ -1,0 +1,13 @@
+[Unit]
+Description=Reconnect the Anker PowerConf over Bluetooth
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/radxa/home-ai-security/deploy/powerconf-autoconnect.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

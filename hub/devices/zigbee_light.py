@@ -9,6 +9,7 @@ from typing import Any
 from hub import config
 
 ON_OFF_CLUSTER = 0x0006
+RETRY_SECONDS = 5
 
 
 class ZigbeeLights:
@@ -19,6 +20,7 @@ class ZigbeeLights:
         self._ready = threading.Event()
         self._error: str | None = None
         self._stop = threading.Event()
+        self._stay: asyncio.Future[None] | None = None
 
     def start(self) -> None:
         if not config.ZIGBEE_DEVICE:
@@ -32,6 +34,9 @@ class ZigbeeLights:
         app = self._app
         if loop is None or not loop.is_running():
             return
+        stay = self._stay
+        if stay is not None and not stay.done():
+            loop.call_soon_threadsafe(stay.cancel)
         if app is not None:
             future = asyncio.run_coroutine_threadsafe(app.shutdown(), loop)
             try:
@@ -94,34 +99,53 @@ class ZigbeeLights:
 
     async def _main(self) -> None:
         self._loop = asyncio.get_running_loop()
-        try:
-            from zigpy_znp.zigbee.application import ControllerApplication
-
-            database = config.DATA_DIR / "zigbee.db"
-            self._app = await ControllerApplication.new(
-                {
-                    "database_path": str(database),
-                    "device": {
-                        "path": config.ZIGBEE_DEVICE,
-                        "baudrate": config.ZIGBEE_BAUD,
-                    },
-                },
-                auto_form=True,
-                start_radio=True,
-            )
-            print(f"Zigbee coordinator ready on {config.ZIGBEE_DEVICE}")
-        except Exception as exc:  # noqa: BLE001
-            self._error = f"Zigbee coordinator failed: {exc}"
-            print(f"ERROR: {self._error}")
-        finally:
+        while not self._stop.is_set():
+            try:
+                await self._open_radio()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:  # noqa: BLE001
+                self._app = None
+                self._error = f"Zigbee coordinator failed: {exc}"
+                print(f"ERROR: {self._error}")
+                self._ready.set()
+                try:
+                    await asyncio.wait_for(self._stopped(), timeout=RETRY_SECONDS)
+                except asyncio.TimeoutError:
+                    pass
+                continue
+            self._error = None
             self._ready.set()
-        if self._app is None:
-            return
-        stay = self._loop.create_future()
-        try:
-            await stay
-        except asyncio.CancelledError:
-            pass
+            print(f"Zigbee coordinator ready on {config.ZIGBEE_DEVICE}")
+            try:
+                await self._stopped()
+            except asyncio.CancelledError:
+                break
+            if self._stop.is_set():
+                break
+            self._app = None
+            print("Zigbee coordinator stopped. Opening it again.")
+
+    async def _open_radio(self) -> None:
+        from zigpy_znp.zigbee.application import ControllerApplication
+
+        database = config.DATA_DIR / "zigbee.db"
+        self._app = await ControllerApplication.new(
+            {
+                "database_path": str(database),
+                "device": {
+                    "path": config.ZIGBEE_DEVICE,
+                    "baudrate": config.ZIGBEE_BAUD,
+                },
+            },
+            auto_form=True,
+            start_radio=True,
+        )
+
+    def _stopped(self) -> asyncio.Future[None]:
+        assert self._loop is not None
+        self._stay = self._loop.create_future()
+        return self._stay
 
     async def _permit(self, seconds: int) -> None:
         await self._app.permit(seconds)

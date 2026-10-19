@@ -1,5 +1,6 @@
 import { SessionStore } from '../storage/sessionStore';
 import {
+  AssistantMedia,
   AssistantResponse,
   DoorEvent,
   EventSearch,
@@ -198,9 +199,24 @@ export class HubClient {
       method: 'POST',
       body: { prompt },
     });
+    const rawMedia = obj.tool_data?.media;
+    const media: AssistantMedia[] = Array.isArray(rawMedia)
+      ? rawMedia
+          .filter((item: any) => item?.snapshot_url)
+          .slice(0, 3)
+          .map((item: any) => ({
+            id: item.id,
+            ts: item.ts,
+            label: item.label,
+            camera: item.camera ?? null,
+            snapshotUrl: item.snapshot_url,
+            clipUrl: item.clip_url || null,
+          }))
+      : [];
     return {
       response: obj.response || 'No response received from Assistant.',
       toolUsed: obj.tool_used || 'general_llm',
+      media,
     };
   }
 
@@ -210,6 +226,7 @@ export class HubClient {
       state: obj.state || 'unknown',
       updatedAt: obj.updated_at,
       adapter: obj.adapter,
+      reachable: obj.reachable || 'unknown',
     };
   }
 
@@ -219,6 +236,7 @@ export class HubClient {
       state: obj.state,
       updatedAt: obj.updated_at,
       adapter: obj.adapter,
+      reachable: obj.reachable || 'unknown',
     };
   }
 
@@ -231,6 +249,7 @@ export class HubClient {
       state: obj.state,
       updatedAt: obj.updated_at,
       adapter: obj.adapter,
+      reachable: obj.reachable || 'unknown',
     };
   }
 
@@ -261,6 +280,14 @@ export class HubClient {
     return `${wsBase}/v1/stream/events?access_token=${token}`;
   }
 
+  static async getCameraLiveUrl(camera: 'door' | 'driveway'): Promise<string> {
+    const baseUrl = await SessionStore.getHubUrl();
+    const token = (await SessionStore.getAccessToken()) || '';
+    const wsBase = baseUrl.replace(/^https:\/\//i, 'wss://').replace(/^http:\/\//i, 'ws://');
+    const path = camera === 'door' ? '/v1/system/live' : '/v1/driveway/live';
+    return `${wsBase}${path}?access_token=${encodeURIComponent(token)}`;
+  }
+
   static async getDoorSnapshotUrl(): Promise<string> {
     const baseUrl = await SessionStore.getHubUrl();
     const token = (await SessionStore.getAccessToken()) || '';
@@ -287,6 +314,8 @@ export class HubClient {
       ts: item.ts,
       label: item.label,
       confidence: item.confidence ?? 0.0,
+      maskDetected: Boolean(item.mask_detected),
+      maskStatus: item.mask_status || (item.mask_detected ? 'masked' : 'unmasked'),
       snapshotUrl: item.snapshot_url && item.snapshot_url !== 'null' ? item.snapshot_url : null,
       camera: item.camera && item.camera !== 'null' ? item.camera : null,
     }));

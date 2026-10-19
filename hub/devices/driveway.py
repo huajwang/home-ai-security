@@ -12,6 +12,7 @@ import numpy as np
 from hub import config
 from hub.notify import EventBus
 from hub.storage import Store
+from hub.vision.mask import shared_mask_detector
 from hub.vision.people import shared_detector
 from hub.vision.visits import ObjectVisits
 from hub.vision.worker import _open_camera, _safe_source
@@ -115,7 +116,14 @@ class DrivewayCamera:
     def _capture_loop(self) -> None:
         source = camera_source(config.DRIVEWAY_CAMERA)
         camera = _open_camera(source)
+        for _attempt in range(8):
+            if camera.isOpened():
+                break
+            camera.release()
+            time.sleep(0.4)
+            camera = _open_camera(source)
         if not camera.isOpened():
+            camera.release()
             self._error = f"Could not open driveway camera {_safe_source(source)}"
             print(f"ERROR: {self._error}")
             return
@@ -163,10 +171,12 @@ class DrivewayCamera:
             print(f"Driveway detection idle: {exc}")
             return
         print("Driveway watching for a person")
+        mask_detector = shared_mask_detector() if config.MASK_DETECTION_ENABLED else None
         other_visits = ObjectVisits()
         streak = 0
         last_alarm = 0.0
         visit_notified = False
+        mask_detected_in_visit = False
         last_id = -1
         while not self._stop.is_set():
             with self._lock:
@@ -186,14 +196,33 @@ class DrivewayCamera:
             for label, confidence, x1, y1, x2, y2 in detections:
                 if confidence < config.CONFIDENCE_THRESHOLD:
                     continue
+                is_masked = False
                 if label in config.ALLOWED_LABELS:
                     count += 1
                     best = max(best, confidence)
+                    if mask_detector is not None:
+                        mask_res = mask_detector.detect_mask(frame, (x1, y1, x2, y2))
+                        if mask_res.masked:
+                            is_masked = True
+                            mask_detected_in_visit = True
                 elif label in config.RECORD_LABELS:
                     seen_other[label] = max(seen_other.get(label, 0.0), confidence)
                 else:
                     continue
-                cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                if is_masked:
+                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 140, 255), 2)
+                    cv2.putText(
+                        display,
+                        f"{label} [MASK] {confidence:.2f}",
+                        (x1, y1 - 10 if y1 > 20 else y1 + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 140, 255),
+                        2,
+                    )
+                else:
+                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
             with self._lock:
                 self._frame = display
             if count > 0:
@@ -201,14 +230,22 @@ class DrivewayCamera:
             else:
                 streak = 0
                 visit_notified = False
+                mask_detected_in_visit = False
             now = time.time()
             if streak >= config.FRAMES_REQUIRED_FOR_ALERT and not visit_notified:
                 if now - last_alarm >= config.ALARM_COOLDOWN_SECONDS:
                     visit_notified = True
                     last_alarm = now
                     path = self._save(display)
-                    event = self.store.add_event("person", best, path, camera="driveway")
-                    print(f"Driveway person event {event['id']} confidence={best:.2f}")
+                    event = self.store.add_event(
+                        "person",
+                        best,
+                        path,
+                        camera="driveway",
+                        mask_detected=mask_detected_in_visit,
+                    )
+                    mask_tag = " [MASK DETECTED]" if mask_detected_in_visit else ""
+                    print(f"Driveway person event {event['id']}{mask_tag} confidence={best:.2f}")
                     self._publish(
                         {
                             "type": "person_at_driveway",
@@ -217,6 +254,8 @@ class DrivewayCamera:
                                 "ts": event["ts"],
                                 "label": event["label"],
                                 "confidence": event["confidence"],
+                                "mask_detected": bool(event.get("mask_detected", 0)),
+                                "mask_status": "masked" if event.get("mask_detected") else "unmasked",
                                 "snapshot_url": f"/v1/events/{event['id']}/snapshot",
                             },
                         }

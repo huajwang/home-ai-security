@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -25,47 +26,79 @@ from hub.state import HubState
 from hub.storage import Store
 from hub.vision.worker import VisionWorker
 
+# HTTP and HTTPS are two Uvicorn servers on one process. Each would otherwise
+# start its own cameras, and the USB driveway camera can only be opened once.
+_runtime_lock = threading.Lock()
+_runtime_started = False
+_runtime_ready = threading.Event()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    config.ensure_dirs()
-    store = Store()
-    bootstrap_owner(store)
-    state = HubState()
-    bus = EventBus()
-    lock_adapter = build_lock_adapter(store)
-    bulb = ZigbeeLights()
-    vision = VisionWorker(store, state, bus)
-    vision.lights = bulb
-    doorbell = DoorbellWorker(store, bus, vision)
-    driveway_cam = DrivewayCamera(store, bus)
-    calls_mgr = CallManager(vision)
-    monitor = MonitorPublisher(vision, driveway_cam)
+    global _runtime_started
+    with _runtime_lock:
+        owner = not _runtime_started
+        if owner:
+            _runtime_started = True
+    if not owner:
+        _runtime_ready.wait(60)
+        yield
+        return
 
-    app.state.store = store
-    app.state.hub_state = state
-    app.state.bus = bus
-    app.state.lock = lock_adapter
-    app.state.lights = bulb
-    app.state.vision = vision
-    app.state.driveway = driveway_cam
-    app.state.calls = calls_mgr
-    app.state.login_limiter = RateLimiter(config.LOGIN_RATE_LIMIT)
-    app.state.unlock_limiter = RateLimiter(config.UNLOCK_RATE_LIMIT)
+    monitor = None
+    driveway_cam = None
+    doorbell = None
+    vision = None
+    bulb = None
+    try:
+        config.ensure_dirs()
+        store = Store()
+        bootstrap_owner(store)
+        state = HubState()
+        bus = EventBus()
+        lock_adapter = build_lock_adapter(store)
+        bulb = ZigbeeLights()
+        vision = VisionWorker(store, state, bus)
+        vision.lights = bulb
+        doorbell = DoorbellWorker(store, bus, vision)
+        driveway_cam = DrivewayCamera(store, bus)
+        calls_mgr = CallManager(vision)
+        monitor = MonitorPublisher(vision, driveway_cam)
 
-    loop = asyncio_loop()
-    bus.loop = loop
-    bulb.start()
-    vision.start(loop)
-    doorbell.start(loop)
-    driveway_cam.start(loop)
-    monitor.start()
-    yield
-    monitor.stop()
-    driveway_cam.stop()
-    doorbell.stop()
-    vision.stop()
-    bulb.stop()
+        app.state.store = store
+        app.state.hub_state = state
+        app.state.bus = bus
+        app.state.lock = lock_adapter
+        app.state.lights = bulb
+        app.state.vision = vision
+        app.state.driveway = driveway_cam
+        app.state.calls = calls_mgr
+        app.state.login_limiter = RateLimiter(config.LOGIN_RATE_LIMIT)
+        app.state.unlock_limiter = RateLimiter(config.UNLOCK_RATE_LIMIT)
+
+        loop = asyncio_loop()
+        bus.loop = loop
+        bulb.start()
+        vision.start(loop)
+        doorbell.start(loop)
+        driveway_cam.start(loop)
+        monitor.start()
+        _runtime_ready.set()
+        yield
+    finally:
+        _runtime_ready.clear()
+        if monitor is not None:
+            monitor.stop()
+        if driveway_cam is not None:
+            driveway_cam.stop()
+        if doorbell is not None:
+            doorbell.stop()
+        if vision is not None:
+            vision.stop()
+        if bulb is not None:
+            bulb.stop()
+        with _runtime_lock:
+            _runtime_started = False
 
 
 def asyncio_loop():

@@ -39,6 +39,8 @@ export interface DoorEvent {
   ts: string;
   label: string;
   confidence: number;
+  maskDetected?: boolean;
+  maskStatus?: string;
   snapshotUrl?: string | null;
   camera?: string | null;
 }
@@ -52,9 +54,20 @@ export interface LockStatus {
   state: string;
   updatedAt?: string;
   adapter?: string;
+  reachable?: string;
+}
+
+export interface AssistantMedia {
+  id: number;
+  ts: string;
+  label: string;
+  camera?: string | null;
+  snapshotUrl: string;
+  clipUrl?: string | null;
 }
 
 export interface AssistantResponse {
   response: string;
   toolUsed: string;
+  media: AssistantMedia[];
 }

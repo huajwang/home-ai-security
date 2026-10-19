@@ -11,7 +11,9 @@ SupplementaryGroups=audio dialout
 WorkingDirectory=/home/radxa/home-ai-security
 EnvironmentFile=-/home/radxa/home-ai-security/hub.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/radxa/home-ai-security/.venv/bin/python -m satellites.pc_assistant --listen --hub-url https://127.0.0.1:8443
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStartPre=/bin/bash /home/radxa/home-ai-security/deploy/powerconf-route.sh
+ExecStart=/home/radxa/home-ai-security/.venv/bin/python -m satellites.pc_assistant --listen --hub-url https://127.0.0.1:8443 --device pipewire --gain 1.0
 Restart=on-failure
 RestartSec=10
 

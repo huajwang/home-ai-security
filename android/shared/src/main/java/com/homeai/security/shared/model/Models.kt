@@ -40,7 +40,8 @@ data class DoorEvent(
     val label: String,
     val confidence: Double,
     val snapshotUrl: String?,
-    val camera: String? = null
+    val camera: String? = null,
+    val maskDetected: Boolean? = null
 )
 
 data class EventSearch(

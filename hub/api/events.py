@@ -22,10 +22,11 @@ router = APIRouter(tags=["events"])
 def list_events(
     since: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
+    masked: bool | None = Query(default=None, description="Filter by mask status"),
     _: dict[str, Any] = Depends(current_principal),
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
-    rows = services["store"].list_events(since, limit)
+    rows = services["store"].list_events(since, limit, mask_detected=masked)
     return {"events": [event_payload(row) for row in rows]}
 
 
@@ -39,7 +40,14 @@ def search_events(
     parsed = parse_question(q)
     rows = []
     if parsed.understood:
-        rows = services["store"].search_events(parsed.label, parsed.camera, parsed.start, parsed.end, limit)
+        rows = services["store"].search_events(
+            parsed.label,
+            parsed.camera,
+            parsed.start,
+            parsed.end,
+            limit,
+            mask_detected=parsed.mask_detected,
+        )
     return {"query": q, "filter": parsed.as_dict(), "events": [event_payload(row) for row in rows]}
 
 
