@@ -11,15 +11,25 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HubClient } from '../api/hubClient';
+import { DoorEvent } from '../types/models';
+import { SnapshotModal } from './SnapshotModal';
+
+interface MessageMedia {
+  event: DoorEvent;
+  imageUrl: string;
+  clipUrl?: string | null;
+}
 
 interface Message {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
   toolUsed?: string;
+  media?: MessageMedia[];
   timestamp: string;
 }
 
@@ -42,6 +52,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({
   onClose,
   onActionCompleted,
 }) => {
+  const [preview, setPreview] = useState<DoorEvent | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
@@ -79,11 +90,28 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({
 
     try {
       const res = await HubClient.assistantChat(textToSend);
+      const media: MessageMedia[] = [];
+      for (const item of res.media) {
+        const imageUrl = await HubClient.getEventSnapshotUrl(item.snapshotUrl);
+        media.push({
+          imageUrl,
+          clipUrl: item.clipUrl,
+          event: {
+            id: item.id,
+            ts: item.ts,
+            label: item.label,
+            confidence: 0,
+            camera: item.camera,
+            snapshotUrl: item.snapshotUrl,
+          },
+        });
+      }
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'assistant',
         text: res.response,
         toolUsed: res.toolUsed,
+        media,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -155,6 +183,24 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({
                 >
                   {item.text}
                 </Text>
+                {item.media && item.media.length > 0 && (
+                  <View style={styles.thumbs}>
+                    {item.media.map((shot: MessageMedia) => (
+                      <TouchableOpacity
+                        key={shot.event.id}
+                        onPress={() => setPreview(shot.event)}
+                        style={styles.thumbButton}
+                      >
+                        <Image source={{ uri: shot.imageUrl }} style={styles.thumb} />
+                        {shot.clipUrl ? (
+                          <View style={styles.playBadge}>
+                            <Ionicons name="play" size={12} color="#FFF" />
+                          </View>
+                        ) : null}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
                 <Text style={styles.timestamp}>{item.timestamp}</Text>
               </View>
             )}
@@ -209,6 +255,12 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+        <SnapshotModal
+          embedded
+          visible={preview !== null}
+          event={preview}
+          onClose={() => setPreview(null)}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -315,6 +367,33 @@ const styles = StyleSheet.create({
   },
   assistantMessageText: {
     color: '#E2E8F0',
+  },
+  thumbs: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  thumbButton: {
+    width: 84,
+    height: 64,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#0F172A',
+  },
+  thumb: {
+    width: 84,
+    height: 64,
+  },
+  playBadge: {
+    position: 'absolute',
+    right: 4,
+    bottom: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   timestamp: {
     fontSize: 10,

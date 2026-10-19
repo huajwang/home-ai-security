@@ -156,3 +156,12 @@ def test_assistant_api_endpoints():
         )
         assert light_chat.status_code == 200
         assert light_chat.json()["tool_used"] == "control_light"
+
+        # The iPhone shortcut says "lights", not "light".
+        lights_chat = client.post(
+            "/v1/assistant/chat",
+            headers=headers,
+            json={"prompt": "Turn on the lights"},
+        )
+        assert lights_chat.status_code == 200
+        assert lights_chat.json()["tool_used"] == "control_light"

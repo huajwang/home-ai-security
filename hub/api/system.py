@@ -5,11 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, WebSocket
 from fastapi.responses import Response
 
 from hub.api.deps import current_principal, get_services
 from hub.errors import raise_api
+from hub.media.live import accept_camera_socket, push_jpeg_frames
 
 router = APIRouter(prefix="/v1/system", tags=["system"])
 
@@ -31,6 +32,7 @@ def _system_body(services: dict[str, Any]) -> dict[str, Any]:
             "state": lock.get_status(),
             "updated_at": lock.updated_at(),
             "adapter": lock.name,
+            "reachable": lock.reachable() if hasattr(lock, "reachable") else "unknown",
         },
         "hub_time": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
     }
@@ -58,6 +60,20 @@ def get_door_snapshot(
     if not ok:
         raise_api(500, "encode_error", "Failed to encode snapshot")
     return Response(content=buf.tobytes(), media_type="image/jpeg")
+
+
+@router.websocket("/live")
+async def door_live(ws: WebSocket) -> None:
+    if not await accept_camera_socket(ws):
+        return
+    vision = getattr(ws.app.state, "vision", None)
+
+    def frame():
+        if vision is None:
+            return None
+        return vision.latest_bgr()
+
+    await push_jpeg_frames(ws, frame)
 
 
 @router.post("/arm")

@@ -19,16 +19,30 @@ class ZwaveLockAdapter:
     def __init__(self, store: Store) -> None:
         self._store = store
         self._state = LockState.UNKNOWN
+        self._reachable = "unknown"
         self._updated_at = _now()
+
+    def note_state(self, state: str) -> bool:
+        """Record a bolt report pushed by the lock. Returns false when it is unchanged."""
+        if state not in {LockState.LOCKED, LockState.UNLOCKED} or state == self._state:
+            return False
+        self._state = state
+        self._reachable = "alive"
+        self._updated_at = _now()
+        return True
 
     def get_status(self) -> str:
         try:
-            body = self._request("GET", "/status", timeout=2)
+            body = self._request("GET", "/status", timeout=8)
             self._state = str(body.get("state") or LockState.UNKNOWN)
+            self._reachable = str(body.get("reachable") or "unknown")
             self._updated_at = _now()
         except Exception:
             pass
         return self._state
+
+    def reachable(self) -> str:
+        return self._reachable
 
     def updated_at(self) -> str:
         return self._updated_at
@@ -73,7 +87,7 @@ class ZwaveLockAdapter:
 
     def _act(self, actor: str, device_id: int | None, action: str, reason: str | None) -> LockResult:
         try:
-            body = self._request("POST", "/lock", {"action": action})
+            body = self._request("POST", "/lock", {"action": action}, timeout=40)
         except Exception as exc:  # noqa: BLE001
             result = LockResult(False, self.get_status(), str(exc))
             self._store.add_lock_audit(actor, device_id, action, "error", reason)

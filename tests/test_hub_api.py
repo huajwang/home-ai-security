@@ -150,3 +150,13 @@ def test_unlock_requires_confirm() -> None:
         headers = {"Authorization": f"Bearer {tokens['access_token']}"}
         res = client.post("/v1/lock/unlock", headers=headers, json={"confirm": False})
         assert res.status_code == 400
+
+
+def test_lock_report_accepts_only_localhost() -> None:
+    with TestClient(create_app()) as client:
+        remote = client.post("/v1/lock/report", json={"state": "unlocked"})
+        assert remote.status_code == 403
+    with TestClient(create_app(), client=("127.0.0.1", 9)) as client:
+        local = client.post("/v1/lock/report", json={"state": "unlocked"})
+        assert local.status_code == 200
+        assert local.json()["state"] == "unlocked"

@@ -19,9 +19,15 @@ interface SnapshotModalProps {
   event: DoorEvent | null;
   visible: boolean;
   onClose: () => void;
+  embedded?: boolean;
 }
 
-export const SnapshotModal: React.FC<SnapshotModalProps> = ({ event, visible, onClose }) => {
+export const SnapshotModal: React.FC<SnapshotModalProps> = ({
+  event,
+  visible,
+  onClose,
+  embedded = false,
+}) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string>('');
@@ -41,19 +47,27 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ event, visible, on
     }
   }, [visible, event]);
 
-  if (!event) return null;
+  if (!event || (embedded && !visible)) return null;
 
-  return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+  const body = (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>Event Snapshot</Text>
-            <Text style={styles.timestamp}>{event.ts}</Text>
-          </View>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Ionicons name="close" size={24} color="#FFF" />
-          </TouchableOpacity>
+          {embedded ? (
+            <TouchableOpacity style={styles.backButton} onPress={onClose}>
+              <Ionicons name="chevron-back" size={22} color="#FFF" />
+              <Text style={styles.backText}>AI Assistant</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <View>
+                <Text style={styles.title}>Event Snapshot</Text>
+                <Text style={styles.timestamp}>{event.ts}</Text>
+              </View>
+              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         <View style={styles.imageContainer}>
@@ -123,6 +137,15 @@ export const SnapshotModal: React.FC<SnapshotModalProps> = ({ event, visible, on
           )}
         </View>
       </SafeAreaView>
+  );
+
+  if (embedded) {
+    return <View style={styles.embedded}>{body}</View>;
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      {body}
     </Modal>
   );
 };
@@ -152,6 +175,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94A3B8',
     marginTop: 2,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#F8FAFC',
+  },
+  embedded: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 20,
+    backgroundColor: '#0B0F19',
   },
   closeButton: {
     width: 36,

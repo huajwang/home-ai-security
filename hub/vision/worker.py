@@ -49,6 +49,8 @@ def _open_camera(source: str | int):
         software.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         print(f"Software decoder opened {_safe_source(source)}")
         return software
+    if isinstance(source, str) and source.startswith("/dev/"):
+        return cv2.VideoCapture(source, cv2.CAP_V4L2)
     return cv2.VideoCapture(source)
 
 

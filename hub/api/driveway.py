@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, WebSocket
 from fastapi.responses import Response, StreamingResponse
 
 from hub.api.deps import current_principal, get_services
 from hub.errors import raise_api
+from hub.media.live import accept_camera_socket, push_jpeg_frames
 
 router = APIRouter(prefix="/v1/driveway", tags=["driveway"])
 
@@ -48,3 +49,17 @@ def driveway_stream(
         camera.mjpeg(),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+@router.websocket("/live")
+async def driveway_live(ws: WebSocket) -> None:
+    if not await accept_camera_socket(ws):
+        return
+    camera = getattr(ws.app.state, "driveway", None)
+
+    def frame():
+        if camera is None:
+            return None
+        return camera.latest_bgr()
+
+    await push_jpeg_frames(ws, frame)

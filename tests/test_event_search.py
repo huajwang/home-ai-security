@@ -44,6 +44,31 @@ def test_car_in_the_driveway_sunday() -> None:
     assert parsed.end == "2026-09-28T04:00:00+00:00"
 
 
+def test_does_anyone_come_by_today() -> None:
+    parsed = parse_question("Does anyone come by today?", _NOW)
+    assert parsed.understood is True
+    assert parsed.label == "person"
+    assert parsed.start == "2026-10-03T04:00:00+00:00"
+    assert parsed.end == "2026-10-04T04:00:00+00:00"
+
+
+def test_chinese_driveway_car_yesterday() -> None:
+    parsed = parse_question("昨天车道有车吗", _NOW)
+    assert parsed.understood is True
+    assert parsed.label == "car"
+    assert parsed.camera == "driveway"
+    assert parsed.start == "2026-10-02T04:00:00+00:00"
+    assert parsed.end == "2026-10-03T04:00:00+00:00"
+
+
+def test_chinese_person_today() -> None:
+    parsed = parse_question("今天有人来过吗", _NOW)
+    assert parsed.understood is True
+    assert parsed.label == "person"
+    assert parsed.camera is None
+    assert parsed.start == "2026-10-03T04:00:00+00:00"
+
+
 def test_delivery_driver_is_not_a_stored_label() -> None:
     parsed = parse_question("delivery driver on Sunday afternoon", _NOW)
     assert parsed.understood is False

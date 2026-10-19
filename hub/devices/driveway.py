@@ -116,7 +116,14 @@ class DrivewayCamera:
     def _capture_loop(self) -> None:
         source = camera_source(config.DRIVEWAY_CAMERA)
         camera = _open_camera(source)
+        for _attempt in range(8):
+            if camera.isOpened():
+                break
+            camera.release()
+            time.sleep(0.4)
+            camera = _open_camera(source)
         if not camera.isOpened():
+            camera.release()
             self._error = f"Could not open driveway camera {_safe_source(source)}"
             print(f"ERROR: {self._error}")
             return

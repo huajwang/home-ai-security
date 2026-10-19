@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Image,
   TextInput,
   Alert,
   ActivityIndicator,
@@ -26,6 +25,7 @@ import { DoorEvent, LockStatus, SystemStatus } from '../types/models';
 import { UnlockHelper } from '../utils/unlockHelper';
 import { SnapshotModal } from '../components/SnapshotModal';
 import { AssistantModal } from '../components/AssistantModal';
+import { CameraLive } from '../components/CameraLive';
 
 interface HomeScreenProps {
   onLogout: () => void;
@@ -51,29 +51,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
 
   // Cameras state
   const [selectedCam, setSelectedCam] = useState<'door' | 'driveway'>('door');
-  const [cameraUrl, setCameraUrl] = useState<string | null>(null);
-  const [cameraLoading, setCameraLoading] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [token, setToken] = useState<string>('');
 
   const socketRef = useRef<EventSocket | null>(null);
-
-  const refreshCameraSnapshot = useCallback(async (cam?: 'door' | 'driveway') => {
-    const target = cam || selectedCam;
-    setCameraLoading(true);
-    setCameraError(null);
-    try {
-      const url =
-        target === 'door'
-          ? await HubClient.getDoorSnapshotUrl()
-          : await HubClient.getDrivewaySnapshotUrl();
-      setCameraUrl(url);
-    } catch (e: any) {
-      setCameraError(e?.message || 'Failed to load camera frame');
-    } finally {
-      setCameraLoading(false);
-    }
-  }, [selectedCam]);
 
   const loadAllData = useCallback(async () => {
     try {
@@ -86,17 +65,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
       setLock(lockStatus);
       setEvents(eventList);
       setSearchUnderstood(null);
-
-      const url =
-        selectedCam === 'door'
-          ? await HubClient.getDoorSnapshotUrl()
-          : await HubClient.getDrivewaySnapshotUrl();
-      setCameraUrl(url);
-      setCameraError(null);
     } catch (err: any) {
       console.warn('Load data error:', err);
     }
-  }, [selectedCam]);
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -106,13 +78,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
 
   useEffect(() => {
     SessionStore.getHubUrl().then((url) => setHubUrl(url));
-    SessionStore.getAccessToken().then((t) => setToken(t || ''));
     loadAllData();
 
     // Start WebSocket
     const socket = new EventSocket(
       (event) => {
-        // Handle incoming live event
+        if (event?.type === 'lock_changed' && event.state) {
+          setLock((current) => ({
+            state: event.state,
+            updatedAt: event.updated_at || current?.updatedAt,
+            adapter: current?.adapter,
+            reachable: event.reachable || current?.reachable,
+          }));
+          return;
+        }
         loadAllData();
       },
       (connected) => {
@@ -398,15 +377,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
             <View style={styles.controlInfo}>
               <View style={styles.iconCircleSmall}>
                 <Ionicons
-                  name={lock?.state === 'unlocked' ? 'lock-open' : 'lock-closed'}
+                  name={lock?.reachable === 'dead' ? 'cloud-offline-outline' : lock?.state === 'unlocked' ? 'lock-open' : 'lock-closed'}
                   size={20}
-                  color={lock?.state === 'unlocked' ? '#10B981' : '#F59E0B'}
+                  color={lock?.reachable === 'dead' ? '#9CA3AF' : lock?.state === 'unlocked' ? '#10B981' : '#F59E0B'}
                 />
               </View>
               <View>
                 <Text style={styles.controlTitle}>Front Door Lock</Text>
                 <Text style={styles.controlSubtitle}>
-                  State: <Text style={{ textTransform: 'capitalize' }}>{lock?.state || 'Unknown'}</Text>
+                  {lock?.reachable === 'dead'
+                    ? 'Not responding'
+                    : `State: ${lock?.state || 'Unknown'}`}
                 </Text>
               </View>
             </View>
@@ -488,29 +469,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
               <Ionicons name="videocam-outline" size={20} color="#3B82F6" />
               <Text style={styles.cardTitle}>Live Cameras</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => refreshCameraSnapshot()}
-              disabled={cameraLoading}
-            >
-              {cameraLoading ? (
-                <ActivityIndicator size="small" color="#94A3B8" />
-              ) : (
-                <Ionicons name="refresh" size={18} color="#94A3B8" />
-              )}
-            </TouchableOpacity>
           </View>
 
-          {/* Camera Selector Segmented Tabs */}
           <View style={styles.camTabContainer}>
             <TouchableOpacity
               style={[
                 styles.camTab,
                 selectedCam === 'door' && styles.camTabActive,
               ]}
-              onPress={() => {
-                setSelectedCam('door');
-                refreshCameraSnapshot('door');
-              }}
+              onPress={() => setSelectedCam('door')}
             >
               <Ionicons
                 name="home-outline"
@@ -532,10 +499,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
                 styles.camTab,
                 selectedCam === 'driveway' && styles.camTabActive,
               ]}
-              onPress={() => {
-                setSelectedCam('driveway');
-                refreshCameraSnapshot('driveway');
-              }}
+              onPress={() => setSelectedCam('driveway')}
             >
               <Ionicons
                 name="car-outline"
@@ -553,52 +517,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => refreshCameraSnapshot()}
-            style={styles.cameraBox}
-          >
-            {cameraUrl && !cameraError ? (
-              <Image
-                key={cameraUrl}
-                source={{
-                  uri: cameraUrl,
-                  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                }}
-                style={styles.cameraImage}
-                resizeMode="cover"
-                onLoadStart={() => setCameraLoading(true)}
-                onLoadEnd={() => setCameraLoading(false)}
-                onError={(e) => {
-                  setCameraLoading(false);
-                  setCameraError('Tap to retry camera frame');
-                }}
-              />
-            ) : (
-              <View style={styles.cameraPlaceholder}>
-                <Ionicons
-                  name={cameraError ? 'refresh-circle-outline' : 'camera-outline'}
-                  size={36}
-                  color={cameraError ? '#38BDF8' : '#475569'}
-                />
-                <Text style={styles.cameraPlaceholderText}>
-                  {cameraError || (selectedCam === 'door' ? 'Doorbell feed ready' : 'Driveway feed ready')}
-                </Text>
-                <Text style={styles.tapToRefreshText}>Tap to refresh feed</Text>
-              </View>
-            )}
-            <View style={styles.cameraOverlayTag}>
-              <View style={styles.redLiveDot} />
-              <Text style={styles.cameraOverlayText}>
-                {selectedCam === 'door' ? 'CAM 01 · FRONT DOOR' : 'CAM 02 · DRIVEWAY'}
-              </Text>
-            </View>
-            {cameraLoading && (
-              <View style={styles.cameraLoadingOverlay}>
-                <ActivityIndicator size="small" color="#38BDF8" />
-              </View>
-            )}
-          </TouchableOpacity>
+          <CameraLive camera={selectedCam} />
         </View>
 
         {/* Security Events & AI Smart Search */}

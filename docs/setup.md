@@ -89,6 +89,21 @@ def build_lock_adapter(store: Store) -> LockAdapter:
 
 Keep unlock on the HTTPS control plane only. Do not add unlock to the WebRTC data channel.
 
+## Voice satellite (Anker PowerConf)
+
+The PowerConf is a USB microphone and speaker. The hub process does not open it. `satellites/pc_assistant.py` listens for “Hey Jarvis”, sends the transcript to `/v1/assistant/chat`, and speaks the reply from the same device.
+
+Before leaving it plugged in:
+
+1. Pair it once in the Soundcore app, set **Auto-Power Off** to **Never**, then disconnect Bluetooth.
+2. Connect it with the USB data cable. A charge-only cable lights the screen and does not create an audio device.
+
+On the ROCK 5T the device appears as ALSA card `PowerConf`. The room service is `deploy/home-ai-voice.service`, which starts the satellite with `--device PowerConf`. Speech models are fetched with `deploy/download_voice_models.sh`. Say “Hey Jarvis” or “Alexa”, then the command in Chinese or English. SenseVoice transcribes the command, and a Chinese reply is spoken with the Huayan voice.
+
+On a Windows PC, `satellites/start-voice-satellite.bat` runs the same listener against `https://10.0.0.83:8443`.
+
+`hub.env` on the machine running the satellite must contain `HUB_OWNER_USERNAME` and `HUB_OWNER_PASSWORD` for the hub owner account. The service reads that file.
+
 ## Windows firewall
 
 Allow inbound TCP 8443 on the private network profile so the tablet/phone can reach the hub. Do not create a public/WAN rule.

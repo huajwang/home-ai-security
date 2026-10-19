@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from hub.api.deps import current_principal, get_services, require_unlock
@@ -22,12 +22,17 @@ class PinBody(BaseModel):
     pin: str
 
 
+class LockReport(BaseModel):
+    state: str
+
+
 def _lock_body(services: dict[str, Any], extra: dict[str, Any] | None = None) -> dict[str, Any]:
     lock = services["lock"]
     body = {
         "state": lock.get_status(),
         "updated_at": lock.updated_at(),
         "adapter": lock.name,
+        "reachable": lock.reachable() if hasattr(lock, "reachable") else "unknown",
     }
     if extra:
         body.update(extra)
@@ -43,6 +48,33 @@ def _raise_if_failed(result: Any, already: str, code: str, message: str) -> None
     if result.message == already:
         raise_api(409, code, message)
     raise_api(502, "lock_failed", result.message)
+
+
+@router.post("/report")
+async def lock_report(
+    body: LockReport,
+    request: Request,
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    """The Z-Wave controller calls this when the lock pushes a new bolt state."""
+    host = request.client.host if request.client else ""
+    if host not in {"127.0.0.1", "::1"}:
+        raise_api(403, "forbidden", "Lock reports stay on this machine")
+    state = body.state
+    if state not in {"locked", "unlocked"}:
+        raise_api(400, "bad_state", "Lock state must be locked or unlocked")
+    lock = services["lock"]
+    changed = lock.note_state(state) if hasattr(lock, "note_state") else True
+    if changed:
+        await services["bus"].publish(
+            {
+                "type": "lock_changed",
+                "state": state,
+                "reachable": "alive",
+                "updated_at": lock.updated_at() if hasattr(lock, "updated_at") else None,
+            }
+        )
+    return {"ok": True, "state": state, "changed": changed}
 
 
 @router.get("")

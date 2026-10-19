@@ -10,10 +10,10 @@ Includes:
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
-from hub.search.query import EventQuery, parse_question
+from hub.search.query import detect_timeframe, parse_question, timeframe_bounds
 from hub.state import HubState
 from hub.storage import Store
 
@@ -25,37 +25,12 @@ def _to_utc_iso(dt: datetime) -> str:
 def parse_timeframe_window(
     timeframe: str, now: Optional[datetime] = None
 ) -> tuple[Optional[str], Optional[str], str]:
-    """Parse timeframe string like 'today', 'yesterday', 'last_night' into ISO start, end, and label."""
+    """Parse a timeframe, including one named inside a longer sentence."""
     moment = now or datetime.now().astimezone()
-    tf = timeframe.lower().strip().replace(" ", "_")
-
-    if tf in ("yesterday", "last_day"):
-        day = moment - timedelta(days=1)
-        start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
-        return _to_utc_iso(start), _to_utc_iso(end), "yesterday"
-    elif tf in ("last_night", "night"):
-        # If morning now, last night means previous evening/night
-        day = moment - timedelta(days=1) if moment.hour < 12 else moment
-        start = day.replace(hour=21, minute=0, second=0, microsecond=0)
-        end = day.replace(hour=23, minute=59, second=59, microsecond=0)
-        return _to_utc_iso(start), _to_utc_iso(end), "last night"
-    elif tf in ("this_morning", "morning"):
-        start = moment.replace(hour=5, minute=0, second=0, microsecond=0)
-        end = moment.replace(hour=12, minute=0, second=0, microsecond=0)
-        return _to_utc_iso(start), _to_utc_iso(end), "this morning"
-    elif tf in ("this_afternoon", "afternoon"):
-        start = moment.replace(hour=12, minute=0, second=0, microsecond=0)
-        end = moment.replace(hour=17, minute=0, second=0, microsecond=0)
-        return _to_utc_iso(start), _to_utc_iso(end), "this afternoon"
-    elif tf in ("this_week", "past_week"):
-        start = (moment - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
-        end = moment
-        return _to_utc_iso(start), _to_utc_iso(end), "the past 7 days"
-    else:  # default 'today'
-        start = moment.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
-        return _to_utc_iso(start), _to_utc_iso(end), "today"
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    start, end, label_name = timeframe_bounds(timeframe, moment)
+    return _to_utc_iso(start), _to_utc_iso(end), label_name
 
 
 def get_security_briefing(
@@ -124,6 +99,128 @@ def get_security_briefing(
     }
 
 
+_ZH_PERIOD = {
+    "today": "今天",
+    "yesterday": "昨天",
+    "last_night": "昨晚",
+    "this_morning": "今天早上",
+    "this_afternoon": "今天下午",
+    "past_week": "最近一周",
+}
+_EN_PERIOD = {
+    "today": "today",
+    "yesterday": "yesterday",
+    "last_night": "last night",
+    "this_morning": "this morning",
+    "this_afternoon": "this afternoon",
+    "past_week": "the past 7 days",
+}
+_ZH_PLACE = {"driveway": "车道", "door": "门口"}
+_ZH_THING = {"person": "人", "car": "车", "cat": "猫", "dog": "狗"}
+_EN_THING = {"person": "person", "car": "car", "cat": "cat", "dog": "dog"}
+
+
+def _has_cjk(text: str) -> bool:
+    return any("\u4e00" <= ch <= "\u9fff" for ch in text)
+
+
+def _clock(dt: datetime) -> str:
+    return dt.strftime("%I:%M %p").lstrip("0")
+
+
+def _when_phrase(ts: str, now: datetime, chinese: bool) -> str:
+    moment = now.astimezone()
+    try:
+        dt = datetime.fromisoformat(ts)
+    except Exception:
+        return ts
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(moment.tzinfo)
+    clock = _clock(local)
+    if local.date() == moment.date():
+        return clock
+    if chinese:
+        return f"{local.month}月{local.day}日 {clock}"
+    return f"{local.strftime('%b')} {local.day}, {clock}"
+
+
+def _empty_summary(query: str, label: str | None, period: str) -> str:
+    if _has_cjk(query):
+        when = _ZH_PERIOD.get(period, "这个时间")
+        if label == "person":
+            return f"{when}没有人来过。"
+        if label == "car":
+            return f"{when}没有车来过。"
+        return f"{when}没有记录到事件。"
+    when = _EN_PERIOD.get(period, "that time")
+    if label == "person":
+        return f"No one came by {when}."
+    if label == "car":
+        return f"No car came by {when}."
+    return f"No events were recorded {when}."
+
+
+def _latest_sentence(event: dict[str, Any], now: datetime, chinese: bool) -> str:
+    label = str(event.get("label") or "event")
+    camera = str(event.get("camera") or "camera")
+    when = _when_phrase(str(event.get("ts") or ""), now, chinese)
+    if chinese:
+        place = _ZH_PLACE.get(camera, camera)
+        thing = _ZH_THING.get(label, label)
+        return f"最近一次是{when}，{place}有一个{thing}。"
+    thing = _EN_THING.get(label, label)
+    return f"The latest was a {thing} at the {camera} at {when}."
+
+
+def _found_summary(query: str, events: list[dict[str, Any]], now: datetime) -> str:
+    chinese = _has_cjk(query)
+    details = []
+    for ev in events[:3]:
+        label = str(ev.get("label") or "event")
+        camera = str(ev.get("camera") or "camera")
+        when = _when_phrase(str(ev.get("ts") or ""), now, chinese)
+        mask = "，戴了口罩" if chinese and ev.get("mask_detected") else ""
+        mask_en = " (masked)" if not chinese and ev.get("mask_detected") else ""
+        if chinese:
+            place = _ZH_PLACE.get(camera, camera)
+            thing = _ZH_THING.get(label, label)
+            details.append(f"{when} {place}有一个{thing}{mask}")
+        else:
+            details.append(f"{label}{mask_en} at {camera} around {when}")
+    count = len(events)
+    if chinese:
+        return f"找到 {count} 起：" + "；".join(details) + "。"
+    noun = "event" if count == 1 else "events"
+    return f"Found {count} {noun}: " + "; ".join(details) + "."
+
+
+def _media_item(event: dict[str, Any]) -> Optional[dict[str, Any]]:
+    if not event.get("snapshot_path"):
+        return None
+    event_id = event.get("id")
+    if not event_id:
+        return None
+    clip = f"/v1/events/{event_id}/clip" if event.get("clip_path") else None
+    return {
+        "id": event_id,
+        "ts": event.get("ts"),
+        "label": event.get("label"),
+        "camera": event.get("camera"),
+        "snapshot_url": f"/v1/events/{event_id}/snapshot",
+        "clip_url": clip,
+    }
+
+
+def _media_for(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items = []
+    for event in events[:3]:
+        item = _media_item(event)
+        if item:
+            items.append(item)
+    return items
+
+
 def search_events_tool(
     store: Store, query: str, now: Optional[datetime] = None
 ) -> dict[str, Any]:
@@ -145,7 +242,19 @@ def search_events_tool(
         words = [w.strip(".,?!").lower() for w in query.split()]
         label = None
         for w in words:
-            if w in ("person", "someone", "people", "visitor"):
+            if w in (
+                "person",
+                "someone",
+                "somebody",
+                "people",
+                "visitor",
+                "visitors",
+                "anyone",
+                "anybody",
+                "guest",
+                "guests",
+                "who",
+            ):
                 label = "person"
                 break
             elif w in ("car", "vehicle", "truck"):
@@ -184,29 +293,33 @@ def search_events_tool(
             mask_detected=mask_detected,
         )
 
+    moment = now or datetime.now().astimezone()
     count = len(events)
+    shown: list[dict[str, Any]] = []
     if count == 0:
-        summary = f"I found no events matching '{query}'."
+        period = detect_timeframe(query) or "today"
+        summary = _empty_summary(query, parsed.label if parsed.understood else None, period)
+        latest = store.search_events(
+            label=parsed.label if parsed.understood else None,
+            camera=parsed.camera if parsed.understood else None,
+            start=None,
+            end=None,
+            limit=1,
+            mask_detected=parsed.mask_detected if parsed.understood else None,
+        )
+        if latest:
+            summary += _latest_sentence(latest[0], moment, _has_cjk(query))
+            shown = latest
     else:
-        details = []
-        for ev in events[:3]:
-            lbl = ev.get("label", "event")
-            cam = ev.get("camera", "camera")
-            ts = ev.get("ts", "")
-            mask_tag = " (masked)" if bool(ev.get("mask_detected")) else ""
-            try:
-                dt = datetime.fromisoformat(ts)
-                t_str = dt.strftime("%I:%M %p")
-            except Exception:
-                t_str = ts
-            details.append(f"{lbl}{mask_tag} at {cam} around {t_str}")
-        summary = f"Found {count} event{'s' if count != 1 else ''}: " + "; ".join(details) + "."
+        summary = _found_summary(query, events, moment)
+        shown = events[:3]
 
     return {
         "query": query,
         "matched_count": count,
         "summary": summary,
         "events": events[:10],
+        "media": _media_for(shown),
     }
 
 
@@ -216,9 +329,12 @@ def get_device_status(
     """Read current security state, lock status, and light status."""
     state = hub_state.snapshot()
     lock_state = "unknown"
+    lock_reachable = "unknown"
     if hasattr(lock_adapter, "get_status"):
         try:
             lock_state = lock_adapter.get_status()
+            if hasattr(lock_adapter, "reachable"):
+                lock_reachable = lock_adapter.reachable()
         except Exception:
             lock_state = "unknown"
 
@@ -240,8 +356,30 @@ def get_device_status(
         "armed": state.get("armed", False),
         "alarm_active": state.get("alarm_active", False),
         "lock_status": lock_state,
+        "lock_reachable": lock_reachable,
         "summary": summary,
     }
+
+
+def speak_device_status(status: dict[str, Any], query: str) -> str:
+    """Answer from the status reading. A small model will flip disarmed into armed."""
+    armed = bool(status.get("armed"))
+    lock_state = str(status.get("lock_status") or "unknown")
+    if _has_cjk(query):
+        text = "系统已布防。" if armed else "系统未布防。"
+        if status.get("lock_reachable") == "dead":
+            text += "门锁没有回应。"
+        elif lock_state == "locked":
+            text += "门锁着。"
+        elif lock_state == "unlocked":
+            text += "门未锁。"
+        return text
+    text = "The system is armed." if armed else "The system is disarmed."
+    if status.get("lock_reachable") == "dead":
+        text += " The lock is not responding."
+    elif lock_state != "unknown":
+        text += f" The front door is {lock_state}."
+    return text
 
 
 def control_light_tool(
