@@ -19,6 +19,20 @@ from hub.ai.tools import (
 
 logger = logging.getLogger("home_ai.assistant")
 
+
+def _has_cjk(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in text)
+
+
+def _meeting_chat():
+    def chat(messages: list[dict[str, str]], max_new_tokens: int = 120, timeout: float = 30.0) -> str:
+        runner = get_runner()
+        if not runner.is_available:
+            return ""
+        return runner.chat(messages, max_new_tokens=max_new_tokens, timeout=timeout)
+
+    return chat
+
 CLASSIFY_MAX_TOKENS = 16
 
 SYSTEM_VOICE_PROMPT = (
@@ -50,6 +64,9 @@ class AssistantEngine:
                 "tool_used": "guardrail_unlock_blocked",
                 "tool_data": {"action": "unlock_rejected"},
             }
+
+        if hit and hit.tool in {"start_meeting", "end_meeting"}:
+            return self._meeting(hit.tool, text)
 
         if hit and hit.tool == "control_light":
             lights = self.services.get("lights")
@@ -117,6 +134,29 @@ class AssistantEngine:
             "tool_used": "general_llm",
             "tool_data": {},
         }
+
+    def _meeting(self, tool: str, text: str) -> dict[str, Any]:
+        meetings = self.services.get("meetings")
+        if meetings is None:
+            return {
+                "response": "Meetings are not available.",
+                "tool_used": tool,
+                "tool_data": {},
+            }
+        chinese = _has_cjk(text)
+        if tool == "start_meeting":
+            result = meetings.start()
+            if result.get("already"):
+                spoken = "会议已经开始了。" if chinese else "The meeting has already started."
+            else:
+                spoken = "会议开始了。" if chinese else "The meeting has started."
+        else:
+            result = meetings.finish(_meeting_chat())
+            if result.get("had_meeting"):
+                spoken = "纪要好了。" if chinese else "The minutes are ready."
+            else:
+                spoken = "没有正在进行的会议。" if chinese else "There is no meeting in progress."
+        return {"response": spoken, "tool_used": tool, "tool_data": result}
 
     def _answer_search(
         self,

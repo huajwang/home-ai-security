@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from hub import config
-from hub.api import assistant, auth, calls, driveway, events, lights, lock, system
+from hub.api import assistant, auth, calls, driveway, events, lights, lock, meetings, system
 from hub.auth import bootstrap_owner
 from hub.devices.doorbell import DoorbellWorker
 from hub.devices.driveway import DrivewayCamera
@@ -19,6 +19,7 @@ from hub.devices.lock import build_lock_adapter
 from hub.devices.zigbee_light import ZigbeeLights
 from hub.errors import http_error_handler
 from hub.media.webrtc import CallManager
+from hub.meetings.session import MeetingLog
 from hub.monitor import MonitorPublisher
 from hub.notify import EventBus
 from hub.ratelimit import RateLimiter
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI):
         driveway_cam = DrivewayCamera(store, bus)
         calls_mgr = CallManager(vision)
         monitor = MonitorPublisher(vision, driveway_cam)
+        meetings_log = MeetingLog(config.MEETINGS_DIR, bus)
 
         app.state.store = store
         app.state.hub_state = state
@@ -75,6 +77,7 @@ async def lifespan(app: FastAPI):
         app.state.calls = calls_mgr
         app.state.login_limiter = RateLimiter(config.LOGIN_RATE_LIMIT)
         app.state.unlock_limiter = RateLimiter(config.UNLOCK_RATE_LIMIT)
+        app.state.meetings = meetings_log
 
         loop = asyncio_loop()
         bus.loop = loop
@@ -118,6 +121,7 @@ def create_app() -> FastAPI:
     app.include_router(driveway.router)
     app.include_router(calls.router)
     app.include_router(assistant.router)
+    app.include_router(meetings.router)
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.is_dir():

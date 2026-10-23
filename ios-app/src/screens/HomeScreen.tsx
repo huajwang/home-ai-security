@@ -21,7 +21,7 @@ import {
   TAILSCALE_HTTP_URL,
   LAN_HTTP_URL,
 } from '../storage/sessionStore';
-import { DoorEvent, LockStatus, SystemStatus } from '../types/models';
+import { DoorEvent, LockStatus, MeetingMinutes, SystemStatus } from '../types/models';
 import { UnlockHelper } from '../utils/unlockHelper';
 import { SnapshotModal } from '../components/SnapshotModal';
 import { AssistantModal } from '../components/AssistantModal';
@@ -36,6 +36,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
   const [system, setSystem] = useState<SystemStatus | null>(null);
   const [lock, setLock] = useState<LockStatus | null>(null);
   const [events, setEvents] = useState<DoorEvent[]>([]);
+  const [meetingActive, setMeetingActive] = useState(false);
+  const [minutes, setMinutes] = useState<MeetingMinutes | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -56,14 +58,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
 
   const loadAllData = useCallback(async () => {
     try {
-      const [sysStatus, lockStatus, eventList] = await Promise.all([
+      const [sysStatus, lockStatus, eventList, active, latest] = await Promise.all([
         HubClient.getSystemStatus(),
         HubClient.getLockStatus(),
         HubClient.getEvents(30),
+        HubClient.getActiveMeeting(),
+        HubClient.getLatestMeeting(),
       ]);
       setSystem(sysStatus);
       setLock(lockStatus);
       setEvents(eventList);
+      setMeetingActive(active?.state === 'recording' || active?.state === 'stopping');
+      setMinutes(latest);
       setSearchUnderstood(null);
     } catch (err: any) {
       console.warn('Load data error:', err);
@@ -163,6 +169,37 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
       await loadAllData();
     } catch (err: any) {
       Alert.alert('Light Control Failed', err?.message || 'Light operation failed');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleStartMeeting = async () => {
+    setLoadingAction('meeting_start');
+    try {
+      await HubClient.startMeeting();
+      setMeetingActive(true);
+    } catch (err: any) {
+      Alert.alert('Meeting', err?.message || 'Could not start the meeting');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleStopMeeting = async () => {
+    setLoadingAction('meeting_stop');
+    try {
+      await HubClient.stopMeeting();
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const active = await HubClient.getActiveMeeting();
+        if (!active || active.state === 'ended') {
+          break;
+        }
+      }
+      await loadAllData();
+    } catch (err: any) {
+      Alert.alert('Meeting', err?.message || 'Could not stop the meeting');
     } finally {
       setLoadingAction(null);
     }
@@ -460,6 +497,52 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
               <Text style={styles.linkButtonText}>Pair Lock</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="mic-outline" size={20} color="#3B82F6" />
+              <Text style={styles.cardTitle}>Meeting</Text>
+            </View>
+            <Text style={styles.controlSubtitle}>
+              {meetingActive ? 'Recording' : 'Idle'}
+            </Text>
+          </View>
+          <View style={styles.controlRow}>
+            <TouchableOpacity
+              style={[styles.smallBtn, styles.btnLock]}
+              onPress={handleStartMeeting}
+              disabled={loadingAction !== null || meetingActive}
+            >
+              <Text style={styles.smallBtnText}>Start</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.smallBtn, styles.btnUnlock]}
+              onPress={handleStopMeeting}
+              disabled={loadingAction !== null || !meetingActive}
+            >
+              <Text style={styles.smallBtnText}>Stop</Text>
+            </TouchableOpacity>
+          </View>
+          {minutes ? (
+            <View style={styles.meetingBody}>
+              <Text style={styles.meetingTitle}>{minutes.title}</Text>
+              {minutes.summary ? <Text style={styles.meetingText}>{minutes.summary}</Text> : null}
+              {minutes.decisions.length > 0 ? (
+                <Text style={styles.meetingLabel}>Decisions</Text>
+              ) : null}
+              {minutes.decisions.map((item) => (
+                <Text key={item} style={styles.meetingText}>{item}</Text>
+              ))}
+              {minutes.actionItems.length > 0 ? (
+                <Text style={styles.meetingLabel}>Action items</Text>
+              ) : null}
+              {minutes.actionItems.map((item) => (
+                <Text key={item} style={styles.meetingText}>{item}</Text>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {/* Live Camera Preview Card */}
@@ -861,6 +944,26 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
+  },
+  meetingBody: {
+    marginTop: 12,
+    gap: 4,
+  },
+  meetingTitle: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  meetingLabel: {
+    color: '#93C5FD',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  meetingText: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    lineHeight: 18,
   },
   smallBtnText: {
     color: '#FFF',

@@ -66,6 +66,16 @@ export interface AssistantMedia {
   clipUrl?: string | null;
 }
 
+export interface MeetingMinutes {
+  id?: string;
+  startedAt?: string;
+  endedAt?: string;
+  title: string;
+  summary: string;
+  decisions: string[];
+  actionItems: string[];
+}
+
 export interface AssistantResponse {
   response: string;
   toolUsed: string;

@@ -59,6 +59,29 @@ def test_voice_satellite_process_turn():
     satellite.speak.assert_called_once_with("System is armed.")
 
 
+def test_start_meeting_begins_recording_and_end_meeting_flushes():
+    hub_mock = MagicMock()
+    hub_mock.ask.side_effect = [
+        {"response": "The meeting has started.", "tool_used": "start_meeting"},
+        {"response": "The minutes are ready.", "tool_used": "end_meeting"},
+    ]
+    satellite = VoiceSatellite(hub_client=hub_mock)
+    satellite.transcribe_audio = MagicMock(return_value="start the meeting")
+    satellite.speak = MagicMock()
+    satellite._flush_meeting_chunk = MagicMock()
+
+    audio = np.zeros(1600, dtype=np.float32)
+    satellite.process_voice_turn(audio)
+    assert satellite.meeting is True
+    satellite._flush_meeting_chunk.assert_not_called()
+
+    satellite.transcribe_audio.return_value = "end the meeting"
+    command = np.ones(1600, dtype=np.float32)
+    satellite.process_voice_turn(audio, command)
+    satellite._flush_meeting_chunk.assert_called_once_with(force=True, wait=True)
+    assert satellite.meeting is False
+
+
 _DEVICES = [
     {"name": "rockchip-hdmi0", "max_input_channels": 0, "max_output_channels": 2},
     {"name": "Anker PowerConf", "max_input_channels": 1, "max_output_channels": 0},

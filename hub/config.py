@@ -10,6 +10,7 @@ HUB_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("HUB_DATA_DIR", HUB_DIR / "data"))
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
 CLIP_DIR = DATA_DIR / "clips"
+MEETINGS_DIR = DATA_DIR / "meetings"
 DB_PATH = Path(os.getenv("HUB_DB_PATH", DATA_DIR / "hub.db"))
 CERT_DIR = Path(os.getenv("HUB_CERT_DIR", ROOT / "certs"))
 CERT_FILE = CERT_DIR / "hub.pem"
@@ -109,7 +110,7 @@ MASK_CONFIDENCE_THRESHOLD = float(os.getenv("HUB_MASK_THRESHOLD", "0.50"))
 MASK_MODEL = os.getenv("HUB_MASK_MODEL", "").strip()
 
 # RKLLM Qwen language model on RK3588 NPU
-RKLLM_MODEL_PATH = os.getenv("HUB_RKLLM_MODEL", "/home/radxa/rkllm/qwen2.5-0.5b.rkllm").strip()
+RKLLM_MODEL_PATH = os.getenv("HUB_RKLLM_MODEL", "/home/radxa/rkllm/qwen2.5-1.5b.rkllm").strip()
 RKLLM_LIB_PATH = os.getenv("HUB_RKLLM_LIB", "librkllmrt.so").strip()
 ASSISTANT_ENABLED = os.getenv("HUB_ASSISTANT_ENABLED", "1") not in {"0", "false", "False"}
 
@@ -137,4 +138,5 @@ def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     CLIP_DIR.mkdir(parents=True, exist_ok=True)
+    MEETINGS_DIR.mkdir(parents=True, exist_ok=True)
     CERT_DIR.mkdir(parents=True, exist_ok=True)

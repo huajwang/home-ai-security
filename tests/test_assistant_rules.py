@@ -87,6 +87,20 @@ def test_other_common_questions_hit_their_rules() -> None:
     assert match_rule("打开灯").tool == "control_light"
 
 
+def test_meeting_phrases_start_and_stop_without_catching_other_questions() -> None:
+    assert match_rule("start the meeting").tool == "start_meeting"
+    assert match_rule("begin the meeting").tool == "start_meeting"
+    assert match_rule("开始开会").tool == "start_meeting"
+    assert match_rule("开始会议").tool == "start_meeting"
+    assert match_rule("end the meeting").tool == "end_meeting"
+    assert match_rule("stop the meeting").tool == "end_meeting"
+    assert match_rule("结束开会").tool == "end_meeting"
+    assert match_rule("结束会议").tool == "end_meeting"
+    assert match_rule("who came to the meeting").tool == "search_events"
+    assert match_rule("stop by the meeting").tool == "search_events"
+    assert match_rule("arm the meeting").tool == "arm_system"
+
+
 def test_small_talk_does_not_hit_a_rule() -> None:
     for phrase in _MISS:
         assert match_rule(phrase) is None, phrase

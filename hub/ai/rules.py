@@ -181,6 +181,11 @@ def match_rule(text: str) -> Optional[RuleHit]:
         return None
     if _is_unlock(lower, raw):
         return RuleHit("guardrail_unlock_blocked")
+    meeting = _meeting_command(lower, raw)
+    if meeting == "start":
+        return RuleHit("start_meeting")
+    if meeting == "end":
+        return RuleHit("end_meeting")
     if _is_status(lower, raw):
         return RuleHit("device_status")
     lights = _light_command(lower, raw)
@@ -193,6 +198,20 @@ def match_rule(text: str) -> Optional[RuleHit]:
         return RuleHit("security_briefing", timeframe=detect_timeframe(raw) or "today")
     if _is_search(lower, raw):
         return RuleHit("search_events")
+    return None
+
+
+_MEETING_START_EN = re.compile(r"\b(start|begin)(?:\s+the)?\s+meeting\b", re.IGNORECASE)
+_MEETING_END_EN = re.compile(r"\b(end|stop|finish)(?:\s+the)?\s+meeting\b", re.IGNORECASE)
+_MEETING_START_ZH = ("开始开会", "开始会议")
+_MEETING_END_ZH = ("结束开会", "结束会议")
+
+
+def _meeting_command(lower: str, raw: str) -> Optional[str]:
+    if any(phrase in raw for phrase in _MEETING_END_ZH) or _MEETING_END_EN.search(lower):
+        return "end"
+    if any(phrase in raw for phrase in _MEETING_START_ZH) or _MEETING_START_EN.search(lower):
+        return "start"
     return None
 
 

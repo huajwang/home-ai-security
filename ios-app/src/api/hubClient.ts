@@ -5,6 +5,7 @@ import {
   DoorEvent,
   EventSearch,
   LockStatus,
+  MeetingMinutes,
   Session,
   SystemStatus,
 } from '../types/models';
@@ -271,6 +272,37 @@ export class HubClient {
   static async pairLock(): Promise<string> {
     const obj = await HubClient.request<any>('/v1/lock/pair', { method: 'POST' });
     return obj.message || 'Lock pairing started';
+  }
+
+  static async getActiveMeeting(): Promise<{ state: string } | null> {
+    const obj = await HubClient.request<any>('/v1/meetings/active');
+    return obj.active || null;
+  }
+
+  static async getLatestMeeting(): Promise<MeetingMinutes | null> {
+    const obj = await HubClient.request<any>('/v1/meetings');
+    return HubClient.asMinutes(obj.latest);
+  }
+
+  static async startMeeting(): Promise<void> {
+    await HubClient.request('/v1/meetings/start', { method: 'POST' });
+  }
+
+  static async stopMeeting(): Promise<void> {
+    await HubClient.request('/v1/meetings/stop', { method: 'POST' });
+  }
+
+  private static asMinutes(obj: any): MeetingMinutes | null {
+    if (!obj) return null;
+    return {
+      id: obj.id,
+      startedAt: obj.started_at,
+      endedAt: obj.ended_at,
+      title: obj.title || 'Meeting',
+      summary: obj.summary || '',
+      decisions: Array.isArray(obj.decisions) ? obj.decisions : [],
+      actionItems: Array.isArray(obj.action_items) ? obj.action_items : [],
+    };
   }
 
   static async getWsUrl(): Promise<string> {

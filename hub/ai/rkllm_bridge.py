@@ -156,7 +156,7 @@ class RKLLMRunner:
 
     def __init__(
         self,
-        model_path: str = "/home/radxa/rkllm/qwen2.5-0.5b.rkllm",
+        model_path: str = "/home/radxa/rkllm/qwen2.5-1.5b.rkllm",
         lib_path: str = "librkllmrt.so",
         max_context_len: int = 2048,
         max_new_tokens: int = 512,

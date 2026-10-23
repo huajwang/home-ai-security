@@ -269,13 +269,13 @@ class HubClient:
         url = f"{self.base_url}/v1/assistant/chat"
         headers = {"Authorization": f"Bearer {self.access_token}"}
         try:
-            res = self.session.post(url, json={"prompt": prompt}, headers=headers, timeout=15)
+            res = self.session.post(url, json={"prompt": prompt}, headers=headers, timeout=60)
             if res.status_code == 401:
                 # Token may have expired, retry once
                 if self.login():
                     headers["Authorization"] = f"Bearer {self.access_token}"
                     res = self.session.post(
-                        url, json={"prompt": prompt}, headers=headers, timeout=15
+                        url, json={"prompt": prompt}, headers=headers, timeout=60
                     )
             if res.status_code == 200:
                 return res.json()
@@ -284,6 +284,39 @@ class HubClient:
         except Exception as exc:
             logger.error("Error communicating with assistant API: %s", exc)
             return {"response": "Error communicating with central assistant."}
+
+    def meeting_active(self) -> dict[str, Any] | None | str:
+        body = self._meeting_request("GET", "/v1/meetings/active")
+        if body is None:
+            return "unavailable"
+        active = body.get("active")
+        return active if isinstance(active, dict) else None
+
+    def post_meeting_chunk(self, text: str) -> None:
+        self._meeting_request("POST", "/v1/meetings/active/chunks", {"text": text})
+
+    def finish_meeting(self) -> dict[str, Any]:
+        return self._meeting_request("POST", "/v1/meetings/finish")
+
+    def _meeting_request(
+        self, method: str, path: str, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        if not self.access_token and not self.login():
+            return {}
+        url = f"{self.base_url}{path}"
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        try:
+            res = self.session.request(method, url, json=payload, headers=headers, timeout=60)
+            if res.status_code == 401 and self.login():
+                headers["Authorization"] = f"Bearer {self.access_token}"
+                res = self.session.request(method, url, json=payload, headers=headers, timeout=60)
+            if res.status_code == 200:
+                data = res.json()
+                return data if isinstance(data, dict) else {}
+            logger.error("Meeting API %s %s failed: %s", method, path, res.status_code)
+        except Exception as exc:
+            logger.error("Meeting API error: %s", exc)
+        return None
 
 
 class VoiceSatellite:
@@ -334,6 +367,11 @@ class VoiceSatellite:
         self._piper_voice_zh: Any = None
         self._oww_model: Any = None
         self._running = False
+        self.meeting = False
+        self._meeting_parts: list[np.ndarray] = []
+        self._meeting_count = 0
+        self._meeting_lock = threading.Lock()
+        self._stt_lock = threading.Lock()
 
     def init_stt(self) -> bool:
         try:
@@ -425,10 +463,11 @@ class VoiceSatellite:
         if self._recognizer is None:
             return ""
 
-        stream = self._recognizer.create_stream()
-        stream.accept_waveform(sample_rate, audio_data)
-        self._recognizer.decode_stream(stream)
-        return clean_transcript(stream.result.text)
+        with self._stt_lock:
+            stream = self._recognizer.create_stream()
+            stream.accept_waveform(sample_rate, audio_data)
+            self._recognizer.decode_stream(stream)
+            return clean_transcript(stream.result.text)
 
     def speak(self, text: str) -> None:
         """Speak text through PC speakers."""
@@ -481,8 +520,13 @@ class VoiceSatellite:
         except Exception as exc:
             logger.warning("Wake chime playback failed: %s", exc)
 
-    def process_voice_turn(self, audio_chunk: np.ndarray) -> None:
+    def process_voice_turn(
+        self, audio_chunk: np.ndarray, command_pcm: Optional[np.ndarray] = None
+    ) -> None:
         """Process a spoken query: transcribe, ask Hub, and speak answer."""
+        if self.meeting and command_pcm is not None and command_pcm.size:
+            self._append_meeting_audio(command_pcm)
+            self._flush_meeting_chunk(force=True, wait=True)
         logger.info("Transcribing speech...")
         transcript = self.transcribe_audio(audio_chunk)
         if not transcript:
@@ -491,9 +535,79 @@ class VoiceSatellite:
 
         logger.info("Transcribed: %s", transcript)
         res = self.hub.ask(transcript)
+        tool = res.get("tool_used")
+        if tool == "start_meeting":
+            self.meeting = True
+            self._clear_meeting_audio()
+        elif tool == "end_meeting":
+            self.meeting = False
+            self._clear_meeting_audio()
         spoken_response = res.get("response", "")
         if spoken_response:
             self.speak(spoken_response)
+
+    def _watch_meeting(self) -> None:
+        while self._running:
+            self.sync_meeting()
+            time.sleep(2)
+
+    def sync_meeting(self) -> None:
+        """Follow a meeting started or stopped from the phone."""
+        try:
+            active = self.hub.meeting_active()
+        except Exception as exc:
+            logger.warning("Meeting status check failed: %s", exc)
+            return
+        if active == "unavailable":
+            return
+        state = str(active.get("state")) if isinstance(active, dict) else ""
+        if state == "recording" and not self.meeting:
+            self.meeting = True
+            self._clear_meeting_audio()
+            logger.info("Meeting recording started from the hub.")
+        elif state == "stopping" and self.meeting:
+            self._flush_meeting_chunk(force=True, wait=True)
+            self.hub.finish_meeting()
+            self.meeting = False
+            self._clear_meeting_audio()
+            logger.info("Meeting recording flushed and finished.")
+        elif not state and self.meeting:
+            self.meeting = False
+            self._clear_meeting_audio()
+
+    def _append_meeting_audio(self, samples: np.ndarray) -> None:
+        audio = np.asarray(samples, dtype=np.float32).reshape(-1)
+        if audio.size == 0:
+            return
+        with self._meeting_lock:
+            self._meeting_parts.append(audio)
+            self._meeting_count += int(audio.size)
+
+    def _clear_meeting_audio(self) -> None:
+        with self._meeting_lock:
+            self._meeting_parts = []
+            self._meeting_count = 0
+
+    def _flush_meeting_chunk(self, force: bool = False, wait: bool = False) -> None:
+        need = 16000 * 45
+        with self._meeting_lock:
+            if self._meeting_count == 0:
+                return
+            if not force and self._meeting_count < need:
+                return
+            audio = np.concatenate(self._meeting_parts)
+            self._meeting_parts = []
+            self._meeting_count = 0
+        if wait:
+            self._post_meeting_audio(audio)
+        else:
+            threading.Thread(target=self._post_meeting_audio, args=(audio,), daemon=True).start()
+
+    def _post_meeting_audio(self, audio: np.ndarray) -> None:
+        text = self.transcribe_audio(audio)
+        if text:
+            logger.info("Meeting chunk: %s", text)
+            self.hub.post_meeting_chunk(text)
 
     def run_listening_loop(self) -> None:
         """Always-on microphone capture loop."""
@@ -511,6 +625,7 @@ class VoiceSatellite:
         capture_chunk = max(1, int(capture_rate * frame_size / sample_rate))
         resampler = PcmResampler(capture_rate, sample_rate)
         self._running = True
+        threading.Thread(target=self._watch_meeting, daemon=True).start()
 
         logger.info(
             "Listening for wake-word(s) %s (threshold: %.2f, gain: %.1fx, capture %d Hz)...",
@@ -543,6 +658,9 @@ class VoiceSatellite:
                 samples = pending[:frame_size]
                 pending = pending[frame_size:]
                 pre_roll.append(samples)
+                if self.meeting:
+                    self._append_meeting_audio(samples.astype(np.float32) / 32768.0)
+                    self._flush_meeting_chunk()
 
                 # Feed wake-word model
                 prediction = self._oww_model.predict(samples)
@@ -588,7 +706,10 @@ class VoiceSatellite:
                     full_audio = np.concatenate(list(pre_roll) + query_chunks)
                     float_audio = full_audio.astype(np.float32) / 32768.0
 
-                    self.process_voice_turn(float_audio)
+                    command_pcm = None
+                    if self.meeting and query_chunks:
+                        command_pcm = np.concatenate(query_chunks).astype(np.float32) / 32768.0
+                    self.process_voice_turn(float_audio, command_pcm)
                     pre_roll.clear()
                     logger.info("Resuming wake-word listening...")
 
