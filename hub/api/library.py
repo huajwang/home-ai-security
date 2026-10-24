@@ -21,6 +21,11 @@ class NoteBody(BaseModel):
     title: str = ""
 
 
+class NoteUpdate(BaseModel):
+    text: str
+    title: str = ""
+
+
 class ChunkBody(BaseModel):
     text: str
 
@@ -87,6 +92,32 @@ def add_chunk(
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
     return services["library"].add_chunk(body.text)
+
+
+@router.patch("/notes/{note_id}")
+def update_note(
+    note_id: str,
+    body: NoteUpdate,
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    saved = services["library"].update(note_id, body.text, body.title)
+    if saved is None:
+        raise_api(404, "not_found", "That note does not exist.")
+    if saved.get("message") == "empty":
+        raise_api(400, "empty", "The note is empty.")
+    return _public(saved)
+
+
+@router.delete("/notes/{note_id}")
+def delete_note(
+    note_id: str,
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    if not services["library"].delete(note_id):
+        raise_api(404, "not_found", "That note does not exist.")
+    return {"ok": True}
 
 
 @router.post("/notes/{note_id}/pictures")

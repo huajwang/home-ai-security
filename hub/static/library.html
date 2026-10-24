@@ -5,114 +5,508 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Knowledge library</title>
   <style>
-    :root { color-scheme: dark; }
-    body { margin: 0; font-family: "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; }
-    main { max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; }
-    h1 { font-size: 1.4rem; margin: 0 0 16px; }
-    section { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-    label { display: block; font-size: 0.85rem; color: #94a3b8; margin: 10px 0 4px; }
-    input, textarea { width: 100%; box-sizing: border-box; background: #0f172a; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; padding: 10px; }
-    textarea { min-height: 120px; }
-    button { background: #2563eb; color: white; border: 0; border-radius: 8px; padding: 8px 14px; margin: 8px 8px 0 0; }
-    button.quiet { background: #334155; }
-    .note { border-top: 1px solid #334155; padding-top: 12px; margin-top: 12px; }
-    .note h2 { font-size: 1.05rem; margin: 0 0 6px; }
-    .note p { white-space: pre-wrap; line-height: 1.45; }
-    img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
-    .status { color: #93c5fd; min-height: 1.2em; }
+    :root {
+      color-scheme: dark;
+      --bg: #0b1120;
+      --panel: #111827;
+      --line: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #2563eb;
+      --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .gate {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      overflow: auto;
+    }
+    .signin {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 28px 24px 22px;
+    }
+    .signin h1 { margin: 0 0 6px; font-size: 1.45rem; }
+    .signin p { margin: 0 0 18px; color: var(--muted); font-size: 0.92rem; }
+    label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 0.82rem; }
+    input, textarea {
+      width: 100%;
+      background: #0b1120;
+      color: var(--text);
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    textarea { min-height: 220px; resize: vertical; line-height: 1.5; }
+    .primary, .quiet, .danger {
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 14px;
+    }
+    .primary { background: var(--accent); color: white; }
+    .quiet { background: #1f2937; color: var(--text); }
+    .danger { background: transparent; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .danger.confirm { background: var(--danger); color: white; border: 0; }
+    .signin .primary { width: 100%; margin-top: 16px; }
+    .app {
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-shrink: 0;
+      padding: 14px 20px;
+      padding-top: max(14px, env(safe-area-inset-top));
+      border-bottom: 1px solid var(--line);
+      background: #0f172a;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    header strong { font-size: 1.05rem; }
+    .back { display: none; }
+    .shell {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      min-height: 0;
+    }
+    aside {
+      min-height: 0;
+      overflow: hidden;
+      border-right: 1px solid var(--line);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #0f172a;
+    }
+    .list {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .row {
+      text-align: left;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .row.active { background: #1e293b; border-color: #334155; }
+    .row strong { display: block; font-size: 0.95rem; overflow-wrap: anywhere; }
+    .row span { color: var(--muted); font-size: 0.78rem; }
+    .reader {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .pane {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 28px 32px 48px;
+      max-width: 860px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .pane h2 { margin: 0 0 8px; font-size: 1.6rem; }
+    .title-edit { font-size: 1.4rem; font-weight: 650; margin-bottom: 12px; }
+    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 18px; }
+    .body { white-space: pre-wrap; line-height: 1.6; font-size: 1.02rem; }
+    .pictures { display: grid; gap: 12px; margin-top: 20px; }
+    .pictures img { width: 100%; border-radius: 12px; background: #020617; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 22px; }
+    .pick {
+      display: inline-flex;
+      align-items: center;
+      margin: 0;
+      background: #1f2937;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .pick input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+    .empty { color: var(--muted); line-height: 1.5; }
+    .status { min-height: 1.2em; color: #93c5fd; font-size: 0.88rem; margin: 8px 0 0; }
+    .status-bar {
+      flex-shrink: 0;
+      margin: 0;
+      padding: 4px 20px max(10px, env(safe-area-inset-bottom));
+    }
+    @media (max-width: 1100px) {
+      .shell { grid-template-columns: 260px minmax(0, 1fr); }
+      .pane { padding: 22px 22px 40px; }
+    }
+    @media (max-width: 719px) {
+      header { padding: 12px 14px; padding-top: max(12px, env(safe-area-inset-top)); }
+      .shell { grid-template-columns: minmax(0, 1fr); }
+      .app.reading aside { display: none; }
+      .app:not(.reading) .reader { display: none; }
+      .app.reading .back { display: inline-flex; }
+      .app.reading .brand strong { display: none; }
+      aside { border-right: 0; padding: 12px; }
+      .pane { padding: 16px 16px 32px; max-width: none; }
+      .pane h2 { font-size: 1.35rem; }
+      textarea { min-height: 40vh; }
+      .row { padding: 12px; }
+      .primary, .quiet, .danger, .pick { min-height: 44px; }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Knowledge library</h1>
-    <p class="status" id="status"></p>
-
-    <section id="login">
-      <label>Username</label>
+  <div class="gate" id="gate">
+    <form class="signin" id="login">
+      <h1>Knowledge library</h1>
+      <p>Sign in with the same account as the phone.</p>
+      <label for="user">Username</label>
       <input id="user" value="owner" autocomplete="username" />
-      <label>Password</label>
+      <label for="pass">Password</label>
       <input id="pass" type="password" value="changeme" autocomplete="current-password" />
-      <button id="signin" type="button">Sign in</button>
-    </section>
+      <p class="status" id="login-status"></p>
+      <button class="primary" id="signin" type="submit">Sign in</button>
+    </form>
+  </div>
 
-    <section id="editor" hidden>
-      <label>Paste a note</label>
-      <textarea id="text"></textarea>
-      <button id="save" type="button">Save</button>
-      <label>Search</label>
-      <input id="query" />
-      <button id="find" type="button">Search</button>
-      <div id="results"></div>
-    </section>
-  </main>
+  <div class="app" id="app" hidden>
+    <header>
+      <div class="brand">
+        <button class="back quiet" id="back" type="button">Notes</button>
+        <strong>Knowledge library</strong>
+      </div>
+      <button class="quiet" id="signout" type="button">Sign out</button>
+    </header>
+    <div class="shell">
+      <aside>
+        <input id="query" placeholder="Search notes" />
+        <button class="primary" id="new-note" type="button">New note</button>
+        <div class="list" id="list"></div>
+      </aside>
+      <div class="reader" id="reader">
+        <section class="pane" id="pane"></section>
+      </div>
+    </div>
+    <p class="status status-bar" id="status"></p>
+  </div>
+
   <script>
-    const status = document.getElementById("status");
     const tokenKey = "libraryToken";
+    let notes = [];
+    let selected = "";
+    let composing = false;
+    let editing = false;
+    let confirmDelete = false;
+    let showReader = false;
+    const phoneQuery = window.matchMedia("(max-width: 719px)");
+
     function token() { return sessionStorage.getItem(tokenKey) || ""; }
-    function setStatus(text) { status.textContent = text; }
-    async function api(path, options) {
-      const headers = options.headers || {};
-      if (token()) headers.Authorization = "Bearer " + token();
-      const response = await fetch(path, { ...options, headers });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || data.detail || "Request failed");
-      return data;
+    function setStatus(text) {
+      document.getElementById("status").textContent = text;
+      document.getElementById("login-status").textContent = text;
     }
-    function showEditor(on) {
-      document.getElementById("login").hidden = on;
-      document.getElementById("editor").hidden = !on;
+    async function api(path, options) {
+      const headers = Object.assign({}, options.headers || {});
+      if (token()) headers.Authorization = "Bearer " + token();
+      const response = await fetch(path, Object.assign({}, options, { headers }));
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Request failed");
+      return data;
     }
     function pictureUrl(path) {
       const join = path.includes("?") ? "&" : "?";
       return path + join + "access_token=" + encodeURIComponent(token());
     }
-    function draw(notes) {
-      const root = document.getElementById("results");
+    function when(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      return date.toLocaleString();
+    }
+    function showApp(on) {
+      document.getElementById("gate").hidden = on;
+      document.getElementById("app").hidden = !on;
+    }
+    function drawList() {
+      const root = document.getElementById("list");
       root.replaceChildren();
+      if (!notes.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = document.getElementById("query").value.trim()
+          ? "No notes matched."
+          : "No notes yet.";
+        root.append(empty);
+        return;
+      }
       notes.forEach((note) => {
-        const block = document.createElement("article");
-        block.className = "note";
-        const title = document.createElement("h2");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "row" + (note.id === selected && !composing ? " active" : "");
+        const title = document.createElement("strong");
         title.textContent = note.title || "Note";
-        const body = document.createElement("p");
-        body.textContent = note.body || "";
-        block.append(title, body);
-        (note.pictures || []).forEach((path) => {
-          const image = document.createElement("img");
-          image.src = pictureUrl(path);
-          image.alt = "";
-          block.append(image);
+        const date = document.createElement("span");
+        date.textContent = when(note.created_at);
+        button.append(title, date);
+        button.addEventListener("click", () => {
+          composing = false;
+          editing = false;
+          confirmDelete = false;
+          selected = note.id;
+          showReader = true;
+          draw();
         });
-        const file = document.createElement("input");
-        file.type = "file";
-        file.accept = "image/*";
-        file.addEventListener("change", async () => {
-          const chosen = file.files && file.files[0];
-          if (!chosen) return;
-          const form = new FormData();
-          form.append("file", chosen);
-          setStatus("Adding picture…");
-          const saved = await api("/v1/library/notes/" + note.id + "/pictures", { method: "POST", body: form, headers: {} });
-          setStatus("Picture added.");
-          draw(notes.map((item) => item.id === note.id ? saved : item));
-        });
-        const print = document.createElement("button");
-        print.type = "button";
-        print.textContent = "Print";
-        print.addEventListener("click", async () => {
-          setStatus("Printing…");
-          const result = await api("/v1/library/notes/" + note.id + "/print", { method: "POST", headers: { "Content-Type": "application/json" } });
-          setStatus(result.message || (result.ok ? "Sent to the printer." : "The printer did not accept the page."));
-        });
-        block.append(file, print);
-        root.append(block);
+        root.append(button);
       });
+    }
+    function drawPane() {
+      const pane = document.getElementById("pane");
+      pane.replaceChildren();
+      if (composing) {
+        const title = document.createElement("h2");
+        title.textContent = "New note";
+        const box = document.createElement("textarea");
+        box.id = "text";
+        box.placeholder = "Paste a note";
+        const save = document.createElement("button");
+        save.className = "primary";
+        save.type = "button";
+        save.textContent = "Save";
+        save.addEventListener("click", saveNote);
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        actions.append(save);
+        pane.append(title, box, actions);
+        return;
+      }
+      const note = notes.find((item) => item.id === selected);
+      if (!note) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = document.getElementById("query").value.trim()
+          ? "No notes matched."
+          : "Paste or dictate the first note.";
+        pane.append(empty);
+        return;
+      }
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = when(note.created_at);
+      let title;
+      let body;
+      if (editing) {
+        title = document.createElement("input");
+        title.id = "edit-title";
+        title.className = "title-edit";
+        title.value = note.title || "";
+        body = document.createElement("textarea");
+        body.id = "edit-body";
+        body.value = note.body || "";
+      } else {
+        title = document.createElement("h2");
+        title.textContent = note.title || "Note";
+        body = document.createElement("div");
+        body.className = "body";
+        body.textContent = note.body || "";
+      }
+      const pictures = document.createElement("div");
+      pictures.className = "pictures";
+      (note.pictures || []).forEach((path) => {
+        const image = document.createElement("img");
+        image.src = pictureUrl(path);
+        image.alt = "";
+        pictures.append(image);
+      });
+      const edit = document.createElement("button");
+      edit.type = "button";
+      if (editing) {
+        edit.className = "primary";
+        edit.textContent = "Save";
+        edit.addEventListener("click", () => saveEdit(note.id));
+      } else {
+        edit.className = "quiet";
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => {
+          editing = true;
+          confirmDelete = false;
+          drawPane();
+        });
+      }
+      const pick = document.createElement("label");
+      pick.className = "pick";
+      const file = document.createElement("input");
+      file.type = "file";
+      file.accept = "image/*";
+      file.addEventListener("change", () => addPicture(note.id, file));
+      pick.append(document.createTextNode("Add picture"), file);
+      const print = document.createElement("button");
+      print.className = "quiet";
+      print.type = "button";
+      print.textContent = "Print";
+      print.addEventListener("click", () => printNote(note.id));
+      const remove = document.createElement("button");
+      remove.className = "danger" + (confirmDelete ? " confirm" : "");
+      remove.type = "button";
+      remove.textContent = confirmDelete ? "Delete this note?" : "Delete";
+      remove.addEventListener("click", () => removeNote(note.id));
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      actions.append(edit, pick, print, remove);
+      if (editing) {
+        const cancel = document.createElement("button");
+        cancel.className = "quiet";
+        cancel.type = "button";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", () => {
+          editing = false;
+          drawPane();
+        });
+        actions.append(cancel);
+      }
+      pane.append(title, meta, body, pictures, actions);
+    }
+    function syncLayout() {
+      document.getElementById("app").classList.toggle("reading", phoneQuery.matches && showReader);
+    }
+    function draw() {
+      drawList();
+      drawPane();
+      syncLayout();
     }
     async function load(query) {
       const data = await api("/v1/library/notes?q=" + encodeURIComponent(query || ""), { headers: {} });
-      draw(data.notes || []);
+      notes = data.notes || [];
+      if (!notes.some((note) => note.id === selected)) selected = notes[0] ? notes[0].id : "";
+      draw();
     }
-    document.getElementById("signin").addEventListener("click", async () => {
+    async function saveNote() {
+      const text = document.getElementById("text").value.trim();
+      if (!text) return;
+      setStatus("Saving…");
+      try {
+        const saved = await api("/v1/library/notes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        composing = false;
+        selected = saved.id;
+        setStatus("Saved.");
+        await load(document.getElementById("query").value);
+      } catch (err) {
+        setStatus(err.message);
+      }
+    }
+    async function saveEdit(id) {
+      const title = document.getElementById("edit-title").value.trim();
+      const text = document.getElementById("edit-body").value.trim();
+      if (!text) {
+        setStatus("The note is empty.");
+        return;
+      }
+      setStatus("Saving…");
+      try {
+        await api("/v1/library/notes/" + id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, title }),
+        });
+        editing = false;
+        selected = id;
+        setStatus("Saved.");
+        await load(document.getElementById("query").value);
+      } catch (err) {
+        setStatus(err.message);
+      }
+    }
+    async function addPicture(id, file) {
+      const chosen = file.files && file.files[0];
+      if (!chosen) return;
+      const form = new FormData();
+      form.append("file", chosen);
+      setStatus("Adding picture…");
+      try {
+        const saved = await api("/v1/library/notes/" + id + "/pictures", { method: "POST", body: form, headers: {} });
+        notes = notes.map((item) => item.id === id ? saved : item);
+        setStatus("Picture added.");
+        draw();
+      } catch (err) {
+        setStatus(err.message);
+      }
+    }
+    async function printNote(id) {
+      setStatus("Printing…");
+      try {
+        const result = await api("/v1/library/notes/" + id + "/print", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        setStatus(result.message || "Sent to the printer.");
+      } catch (err) {
+        setStatus(err.message);
+      }
+    }
+    async function removeNote(id) {
+      if (!confirmDelete) {
+        confirmDelete = true;
+        drawPane();
+        return;
+      }
+      setStatus("Deleting…");
+      try {
+        await api("/v1/library/notes/" + id, { method: "DELETE", headers: {} });
+        confirmDelete = false;
+        notes = notes.filter((item) => item.id !== id);
+        selected = notes[0] ? notes[0].id : "";
+        if (!selected) showReader = false;
+        setStatus("Deleted.");
+        draw();
+      } catch (err) {
+        confirmDelete = false;
+        setStatus(err.message);
+        drawPane();
+      }
+    }
+    document.getElementById("login").addEventListener("submit", async (event) => {
+      event.preventDefault();
       setStatus("Signing in…");
       try {
         const data = await api("/v1/auth/login", {
@@ -126,36 +520,43 @@
           }),
         });
         sessionStorage.setItem(tokenKey, data.access_token);
-        showEditor(true);
+        showApp(true);
         setStatus("");
         await load("");
       } catch (err) {
         setStatus(err.message);
       }
     });
-    document.getElementById("save").addEventListener("click", async () => {
-      const text = document.getElementById("text").value.trim();
-      if (!text) return;
-      setStatus("Saving…");
-      try {
-        await api("/v1/library/notes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
-        document.getElementById("text").value = "";
-        setStatus("Saved.");
-        await load(document.getElementById("query").value);
-      } catch (err) {
-        setStatus(err.message);
-      }
+    document.getElementById("signout").addEventListener("click", () => {
+      sessionStorage.removeItem(tokenKey);
+      notes = [];
+      selected = "";
+      composing = false;
+      editing = false;
+      showReader = false;
+      showApp(false);
+      setStatus("");
     });
-    document.getElementById("find").addEventListener("click", async () => {
-      try { await load(document.getElementById("query").value); }
-      catch (err) { setStatus(err.message); }
+    document.getElementById("new-note").addEventListener("click", () => {
+      composing = true;
+      editing = false;
+      confirmDelete = false;
+      showReader = true;
+      draw();
+    });
+    document.getElementById("back").addEventListener("click", () => {
+      showReader = false;
+      composing = false;
+      editing = false;
+      confirmDelete = false;
+      draw();
+    });
+    phoneQuery.addEventListener("change", syncLayout);
+    document.getElementById("query").addEventListener("input", () => {
+      load(document.getElementById("query").value).catch((err) => setStatus(err.message));
     });
     if (token()) {
-      showEditor(true);
+      showApp(true);
       load("").catch((err) => setStatus(err.message));
     }
   </script>
