@@ -11,13 +11,14 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from hub import config
-from hub.api import assistant, auth, calls, driveway, events, lights, lock, meetings, system
+from hub.api import assistant, auth, calls, driveway, events, library, lights, lock, meetings, system, tasks
 from hub.auth import bootstrap_owner
 from hub.devices.doorbell import DoorbellWorker
 from hub.devices.driveway import DrivewayCamera
 from hub.devices.lock import build_lock_adapter
 from hub.devices.zigbee_light import ZigbeeLights
 from hub.errors import http_error_handler
+from hub.library.store import Library
 from hub.media.webrtc import CallManager
 from hub.meetings.session import MeetingLog
 from hub.monitor import MonitorPublisher
@@ -25,6 +26,7 @@ from hub.notify import EventBus
 from hub.ratelimit import RateLimiter
 from hub.state import HubState
 from hub.storage import Store
+from hub.tasks.store import TaskLog
 from hub.vision.worker import VisionWorker
 
 # HTTP and HTTPS are two Uvicorn servers on one process. Each would otherwise
@@ -66,6 +68,8 @@ async def lifespan(app: FastAPI):
         calls_mgr = CallManager(vision)
         monitor = MonitorPublisher(vision, driveway_cam)
         meetings_log = MeetingLog(config.MEETINGS_DIR, bus)
+        task_log = TaskLog(config.TASKS_DIR, bus)
+        library_log = Library(config.LIBRARY_DIR, bus)
 
         app.state.store = store
         app.state.hub_state = state
@@ -78,6 +82,8 @@ async def lifespan(app: FastAPI):
         app.state.login_limiter = RateLimiter(config.LOGIN_RATE_LIMIT)
         app.state.unlock_limiter = RateLimiter(config.UNLOCK_RATE_LIMIT)
         app.state.meetings = meetings_log
+        app.state.tasks = task_log
+        app.state.library = library_log
 
         loop = asyncio_loop()
         bus.loop = loop
@@ -122,10 +128,19 @@ def create_app() -> FastAPI:
     app.include_router(calls.router)
     app.include_router(assistant.router)
     app.include_router(meetings.router)
+    app.include_router(tasks.router)
+    app.include_router(library.router)
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    @app.get("/library", response_class=HTMLResponse)
+    def library_page() -> FileResponse:
+        page = static_dir / "library.html"
+        if not page.is_file():
+            return HTMLResponse("<p>Library page missing.</p>", status_code=404)
+        return FileResponse(page)
 
     @app.get("/health")
     def health() -> dict[str, str]:

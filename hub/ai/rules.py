@@ -19,6 +19,7 @@ class RuleHit:
     turn_on: Optional[bool] = None
     armed: Optional[bool] = None
     timeframe: Optional[str] = None
+    kind: Optional[str] = None
 
 
 _UNLOCK_EN = re.compile(r"\b(unlock|open)\b", re.IGNORECASE)
@@ -186,6 +187,17 @@ def match_rule(text: str) -> Optional[RuleHit]:
         return RuleHit("start_meeting")
     if meeting == "end":
         return RuleHit("end_meeting")
+    note = _note_command(lower, raw)
+    if note == "end":
+        return RuleHit("end_note")
+    if note == "start":
+        return RuleHit("start_note")
+    if note == "save":
+        return RuleHit("save_note")
+    task = _task_command(lower, raw)
+    if task is not None:
+        tool, kind = task
+        return RuleHit(tool, kind=kind or None)
     if _is_status(lower, raw):
         return RuleHit("device_status")
     lights = _light_command(lower, raw)
@@ -212,6 +224,40 @@ def _meeting_command(lower: str, raw: str) -> Optional[str]:
         return "end"
     if any(phrase in raw for phrase in _MEETING_START_ZH) or _MEETING_START_EN.search(lower):
         return "start"
+    return None
+
+
+_NOTE_END_EN = re.compile(r"\b(end|stop) the note\b", re.IGNORECASE)
+_NOTE_START_EN = re.compile(r"\bstart a note\b", re.IGNORECASE)
+_NOTE_SAVE_EN = re.compile(r"\b(make|take) a note\b|\bnote that\b", re.IGNORECASE)
+_READ_LIST_EN = re.compile(
+    r"\bwhat(?:'s| is) on (?:my |the )?(?:shopping )?list\b|\bread (?:me )?the list\b",
+    re.IGNORECASE,
+)
+_SHOPPING_EN = re.compile(r"\bshopping list\b", re.IGNORECASE)
+_MAINTENANCE_EN = re.compile(r"\b(log maintenance|maintenance log)\b", re.IGNORECASE)
+_REMINDER_EN = re.compile(r"\bremind me\b", re.IGNORECASE)
+
+
+def _note_command(lower: str, raw: str) -> Optional[str]:
+    if "结束记录" in raw or _NOTE_END_EN.search(lower):
+        return "end"
+    if "开始记录" in raw or _NOTE_START_EN.search(lower):
+        return "start"
+    if any(phrase in raw for phrase in ("记下来", "记个笔记")) or _NOTE_SAVE_EN.search(lower):
+        return "save"
+    return None
+
+
+def _task_command(lower: str, raw: str) -> Optional[tuple[str, str]]:
+    if "清单上有什么" in raw or _READ_LIST_EN.search(lower):
+        return ("read_tasks", "")
+    if "购物清单" in raw or _SHOPPING_EN.search(lower):
+        return ("add_task", "shopping")
+    if "保养记录" in raw or _MAINTENANCE_EN.search(lower):
+        return ("add_task", "maintenance")
+    if "提醒我" in raw or _REMINDER_EN.search(lower):
+        return ("add_task", "reminder")
     return None
 
 

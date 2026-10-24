@@ -68,6 +68,12 @@ class AssistantEngine:
         if hit and hit.tool in {"start_meeting", "end_meeting"}:
             return self._meeting(hit.tool, text)
 
+        if hit and hit.tool in {"start_note", "end_note", "save_note"}:
+            return self._note(hit.tool, text)
+
+        if hit and hit.tool in {"add_task", "read_tasks"}:
+            return self._task(hit, text)
+
         if hit and hit.tool == "control_light":
             lights = self.services.get("lights")
             result = control_light_tool(lights, turn_on=bool(hit.turn_on))
@@ -157,6 +163,50 @@ class AssistantEngine:
             else:
                 spoken = "没有正在进行的会议。" if chinese else "There is no meeting in progress."
         return {"response": spoken, "tool_used": tool, "tool_data": result}
+
+    def _note(self, tool: str, text: str) -> dict[str, Any]:
+        library = self.services.get("library")
+        if library is None:
+            return {"response": "Notes are not available.", "tool_used": tool, "tool_data": {}}
+        chinese = _has_cjk(text)
+        if tool == "start_note":
+            result = library.start_dictation()
+            if result.get("already"):
+                spoken = "已经在记录了。" if chinese else "A note is already in progress."
+            else:
+                spoken = "开始记录了。" if chinese else "The note has started."
+        elif tool == "end_note":
+            result = library.finish_dictation(_meeting_chat())
+            if result.get("had_note"):
+                spoken = "记下了。" if chinese else "The note is saved."
+            elif result.get("state") == "empty":
+                spoken = "没有听到内容。" if chinese else "No speech was captured."
+            else:
+                spoken = "没有正在记录。" if chinese else "There is no note in progress."
+        else:
+            from hub.library.store import strip_note_command
+
+            result = library.add_text(strip_note_command(text) or text, "", _meeting_chat())
+            spoken = "记下了。" if result.get("ok", True) else ("没有听到内容。" if chinese else "No speech was captured.")
+        return {"response": spoken, "tool_used": tool, "tool_data": result}
+
+    def _task(self, hit: Any, text: str) -> dict[str, Any]:
+        tasks = self.services.get("tasks")
+        if tasks is None:
+            return {"response": "Tasks are not available.", "tool_used": hit.tool, "tool_data": {}}
+        chinese = _has_cjk(text)
+        if hit.tool == "read_tasks":
+            open_items = tasks.list_open()
+            from hub.tasks.store import speak_open_tasks
+
+            return {
+                "response": speak_open_tasks(open_items, chinese),
+                "tool_used": "read_tasks",
+                "tool_data": {"tasks": open_items},
+            }
+        item = tasks.add(hit.kind or "reminder", text, _meeting_chat())
+        spoken = f"已记下：{item['text']}。" if chinese else f"Noted: {item['text']}."
+        return {"response": spoken, "tool_used": "add_task", "tool_data": item}
 
     def _answer_search(
         self,

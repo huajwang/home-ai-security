@@ -82,6 +82,25 @@ def test_start_meeting_begins_recording_and_end_meeting_flushes():
     assert satellite.meeting is False
 
 
+def test_start_note_begins_dictation_and_end_note_flushes():
+    hub_mock = MagicMock()
+    hub_mock.ask.side_effect = [
+        {"response": "The note has started.", "tool_used": "start_note"},
+        {"response": "The note is saved.", "tool_used": "end_note"},
+    ]
+    satellite = VoiceSatellite(hub_client=hub_mock)
+    satellite.transcribe_audio = MagicMock(return_value="start a note")
+    satellite.speak = MagicMock()
+    satellite._flush_meeting_chunk = MagicMock()
+    audio = np.zeros(1600, dtype=np.float32)
+    satellite.process_voice_turn(audio)
+    assert satellite.noting is True
+    satellite.transcribe_audio.return_value = "end the note"
+    satellite.process_voice_turn(audio, np.ones(1600, dtype=np.float32))
+    satellite._flush_meeting_chunk.assert_called_once_with(force=True, wait=True)
+    assert satellite.noting is False
+
+
 _DEVICES = [
     {"name": "rockchip-hdmi0", "max_input_channels": 0, "max_output_channels": 2},
     {"name": "Anker PowerConf", "max_input_channels": 1, "max_output_channels": 0},

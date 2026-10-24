@@ -101,6 +101,28 @@ def test_meeting_phrases_start_and_stop_without_catching_other_questions() -> No
     assert match_rule("arm the meeting").tool == "arm_system"
 
 
+def test_task_and_note_phrases_do_not_arm_or_search() -> None:
+    assert match_rule("remind me to buy batteries on Saturday").tool == "add_task"
+    assert match_rule("remind me to buy batteries on Saturday").kind == "reminder"
+    assert match_rule("提醒我周六买电池").kind == "reminder"
+    assert match_rule("add milk to the shopping list").kind == "shopping"
+    assert match_rule("购物清单 买牛奶").kind == "shopping"
+    assert match_rule("log maintenance for the furnace filter").kind == "maintenance"
+    assert match_rule("保养记录 更换门锁电池").kind == "maintenance"
+    assert match_rule("what's on the list").tool == "read_tasks"
+    assert match_rule("清单上有什么").tool == "read_tasks"
+    assert match_rule("what's on the shopping list").tool == "read_tasks"
+    assert match_rule("make a note that the filter is 16 by 25").tool == "save_note"
+    assert match_rule("记下来门锁电池是金霸王").tool == "save_note"
+    assert match_rule("start a note").tool == "start_note"
+    assert match_rule("开始记录").tool == "start_note"
+    assert match_rule("end the note").tool == "end_note"
+    assert match_rule("结束记录").tool == "end_note"
+    assert match_rule("开始开会").tool == "start_meeting"
+    assert match_rule("结束开会").tool == "end_meeting"
+    assert match_rule("remind me to arm the system").tool == "add_task"
+
+
 def test_small_talk_does_not_hit_a_rule() -> None:
     for phrase in _MISS:
         assert match_rule(phrase) is None, phrase

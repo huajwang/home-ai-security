@@ -66,6 +66,14 @@ export interface AssistantMedia {
   clipUrl?: string | null;
 }
 
+export interface TaskItem {
+  id: string;
+  kind: string;
+  text: string;
+  due: string;
+  createdAt?: string;
+}
+
 export interface MeetingMinutes {
   id?: string;
   startedAt?: string;

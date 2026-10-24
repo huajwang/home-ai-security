@@ -8,6 +8,7 @@ import {
   MeetingMinutes,
   Session,
   SystemStatus,
+  TaskItem,
 } from '../types/models';
 
 export class HubError extends Error {
@@ -272,6 +273,27 @@ export class HubClient {
   static async pairLock(): Promise<string> {
     const obj = await HubClient.request<any>('/v1/lock/pair', { method: 'POST' });
     return obj.message || 'Lock pairing started';
+  }
+
+  static async getTasks(): Promise<TaskItem[]> {
+    const obj = await HubClient.request<any>('/v1/tasks');
+    const tasks = Array.isArray(obj.tasks) ? obj.tasks : [];
+    return tasks.map((item: any) => ({
+      id: item.id,
+      kind: item.kind || 'reminder',
+      text: item.text || '',
+      due: item.due || '',
+      createdAt: item.created_at,
+    }));
+  }
+
+  static async completeTask(id: string): Promise<void> {
+    await HubClient.request(`/v1/tasks/${id}/done`, { method: 'POST' });
+  }
+
+  static async printTasks(): Promise<string> {
+    const obj = await HubClient.request<any>('/v1/tasks/print', { method: 'POST' });
+    return obj.message || 'Sent to the printer.';
   }
 
   static async getActiveMeeting(): Promise<{ state: string } | null> {

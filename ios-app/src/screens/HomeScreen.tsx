@@ -21,7 +21,7 @@ import {
   TAILSCALE_HTTP_URL,
   LAN_HTTP_URL,
 } from '../storage/sessionStore';
-import { DoorEvent, LockStatus, MeetingMinutes, SystemStatus } from '../types/models';
+import { DoorEvent, LockStatus, MeetingMinutes, SystemStatus, TaskItem } from '../types/models';
 import { UnlockHelper } from '../utils/unlockHelper';
 import { SnapshotModal } from '../components/SnapshotModal';
 import { AssistantModal } from '../components/AssistantModal';
@@ -38,6 +38,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
   const [events, setEvents] = useState<DoorEvent[]>([]);
   const [meetingActive, setMeetingActive] = useState(false);
   const [minutes, setMinutes] = useState<MeetingMinutes | null>(null);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -58,18 +59,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
 
   const loadAllData = useCallback(async () => {
     try {
-      const [sysStatus, lockStatus, eventList, active, latest] = await Promise.all([
+      const [sysStatus, lockStatus, eventList, active, latest, openTasks] = await Promise.all([
         HubClient.getSystemStatus(),
         HubClient.getLockStatus(),
         HubClient.getEvents(30),
         HubClient.getActiveMeeting(),
         HubClient.getLatestMeeting(),
+        HubClient.getTasks(),
       ]);
       setSystem(sysStatus);
       setLock(lockStatus);
       setEvents(eventList);
       setMeetingActive(active?.state === 'recording' || active?.state === 'stopping');
       setMinutes(latest);
+      setTasks(openTasks);
       setSearchUnderstood(null);
     } catch (err: any) {
       console.warn('Load data error:', err);
@@ -169,6 +172,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
       await loadAllData();
     } catch (err: any) {
       Alert.alert('Light Control Failed', err?.message || 'Light operation failed');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleDoneTask = async (id: string) => {
+    setLoadingAction('task_done');
+    try {
+      await HubClient.completeTask(id);
+      await loadAllData();
+    } catch (err: any) {
+      Alert.alert('Tasks', err?.message || 'Could not update the list');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handlePrintTasks = async () => {
+    setLoadingAction('task_print');
+    try {
+      const message = await HubClient.printTasks();
+      Alert.alert('Tasks', message);
+    } catch (err: any) {
+      Alert.alert('Tasks', err?.message || 'Could not print the list');
     } finally {
       setLoadingAction(null);
     }
@@ -497,6 +524,37 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
               <Text style={styles.linkButtonText}>Pair Lock</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="checkbox-outline" size={20} color="#3B82F6" />
+              <Text style={styles.cardTitle}>Tasks</Text>
+            </View>
+          </View>
+          {tasks.length === 0 ? <Text style={styles.meetingText}>The list is empty.</Text> : null}
+          {tasks.map((task) => (
+            <View key={task.id} style={styles.controlRow}>
+              <Text style={styles.meetingText}>
+                {task.text}{task.due ? ` (${task.due})` : ''}
+              </Text>
+              <TouchableOpacity
+                style={[styles.smallBtn, styles.btnLock]}
+                onPress={() => handleDoneTask(task.id)}
+                disabled={loadingAction !== null}
+              >
+                <Text style={styles.smallBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity
+            style={[styles.smallBtn, styles.btnUnlock]}
+            onPress={handlePrintTasks}
+            disabled={loadingAction !== null || tasks.length === 0}
+          >
+            <Text style={styles.smallBtnText}>Print</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.card}>

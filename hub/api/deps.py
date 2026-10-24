@@ -32,6 +32,8 @@ def get_services(request: Request) -> dict[str, Any]:
         "login_limiter": request.app.state.login_limiter,
         "unlock_limiter": request.app.state.unlock_limiter,
         "meetings": getattr(request.app.state, "meetings", None),
+        "tasks": getattr(request.app.state, "tasks", None),
+        "library": getattr(request.app.state, "library", None),
     }
 
 

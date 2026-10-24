@@ -295,6 +295,9 @@ class HubClient:
     def post_meeting_chunk(self, text: str) -> None:
         self._meeting_request("POST", "/v1/meetings/active/chunks", {"text": text})
 
+    def post_note_chunk(self, text: str) -> None:
+        self._meeting_request("POST", "/v1/library/active/chunks", {"text": text})
+
     def finish_meeting(self) -> dict[str, Any]:
         return self._meeting_request("POST", "/v1/meetings/finish")
 
@@ -368,6 +371,7 @@ class VoiceSatellite:
         self._oww_model: Any = None
         self._running = False
         self.meeting = False
+        self.noting = False
         self._meeting_parts: list[np.ndarray] = []
         self._meeting_count = 0
         self._meeting_lock = threading.Lock()
@@ -524,7 +528,7 @@ class VoiceSatellite:
         self, audio_chunk: np.ndarray, command_pcm: Optional[np.ndarray] = None
     ) -> None:
         """Process a spoken query: transcribe, ask Hub, and speak answer."""
-        if self.meeting and command_pcm is not None and command_pcm.size:
+        if (self.meeting or self.noting) and command_pcm is not None and command_pcm.size:
             self._append_meeting_audio(command_pcm)
             self._flush_meeting_chunk(force=True, wait=True)
         logger.info("Transcribing speech...")
@@ -541,6 +545,12 @@ class VoiceSatellite:
             self._clear_meeting_audio()
         elif tool == "end_meeting":
             self.meeting = False
+            self._clear_meeting_audio()
+        elif tool == "start_note" and not self.meeting:
+            self.noting = True
+            self._clear_meeting_audio()
+        elif tool == "end_note":
+            self.noting = False
             self._clear_meeting_audio()
         spoken_response = res.get("response", "")
         if spoken_response:
@@ -607,7 +617,10 @@ class VoiceSatellite:
         text = self.transcribe_audio(audio)
         if text:
             logger.info("Meeting chunk: %s", text)
-            self.hub.post_meeting_chunk(text)
+            if self.noting and not self.meeting:
+                self.hub.post_note_chunk(text)
+            else:
+                self.hub.post_meeting_chunk(text)
 
     def run_listening_loop(self) -> None:
         """Always-on microphone capture loop."""
@@ -658,7 +671,7 @@ class VoiceSatellite:
                 samples = pending[:frame_size]
                 pending = pending[frame_size:]
                 pre_roll.append(samples)
-                if self.meeting:
+                if self.meeting or self.noting:
                     self._append_meeting_audio(samples.astype(np.float32) / 32768.0)
                     self._flush_meeting_chunk()
 
@@ -707,7 +720,7 @@ class VoiceSatellite:
                     float_audio = full_audio.astype(np.float32) / 32768.0
 
                     command_pcm = None
-                    if self.meeting and query_chunks:
+                    if (self.meeting or self.noting) and query_chunks:
                         command_pcm = np.concatenate(query_chunks).astype(np.float32) / 32768.0
                     self.process_voice_turn(float_audio, command_pcm)
                     pre_roll.clear()

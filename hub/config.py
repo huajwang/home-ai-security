@@ -11,6 +11,10 @@ DATA_DIR = Path(os.getenv("HUB_DATA_DIR", HUB_DIR / "data"))
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
 CLIP_DIR = DATA_DIR / "clips"
 MEETINGS_DIR = DATA_DIR / "meetings"
+TASKS_DIR = DATA_DIR / "tasks"
+LIBRARY_DIR = DATA_DIR / "library"
+PRINTER_NAME = os.getenv("HUB_PRINTER_NAME", "ET788C77E2BF92").strip()
+PRINTER_URI = os.getenv("HUB_PRINTER_URI", "ipp://10.0.0.136:631/ipp/print").strip()
 DB_PATH = Path(os.getenv("HUB_DB_PATH", DATA_DIR / "hub.db"))
 CERT_DIR = Path(os.getenv("HUB_CERT_DIR", ROOT / "certs"))
 CERT_FILE = CERT_DIR / "hub.pem"
@@ -139,4 +143,6 @@ def ensure_dirs() -> None:
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     CLIP_DIR.mkdir(parents=True, exist_ok=True)
     MEETINGS_DIR.mkdir(parents=True, exist_ok=True)
+    TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     CERT_DIR.mkdir(parents=True, exist_ok=True)
