@@ -59,10 +59,12 @@ def test_dictation_joins_chunks_and_an_empty_one_is_not_saved(tmp_path) -> None:
 def test_update_rewrites_the_note_and_keeps_its_picture(tmp_path) -> None:
     library = Library(tmp_path)
     note = library.add_text("旧内容。", "旧标题", chat=None)
+    assert note["category"] == "Notes"
     library.add_picture(note["id"], "filter.png", b"png-bytes")
-    updated = library.update(note["id"], "新内容，金霸王。", "新标题")
+    updated = library.update(note["id"], "新内容，金霸王。", "新标题", "家务")
     assert updated["ok"] is True
     assert updated["title"] == "新标题"
+    assert updated["category"] == "家务"
     assert updated["body"] == "新内容，金霸王。"
     assert updated["pictures"] == ["1.png"]
     assert updated["created_at"] == note["created_at"]
@@ -83,6 +85,24 @@ def test_delete_removes_the_note_and_its_pictures(tmp_path) -> None:
     assert not picture.exists()
     assert not picture.parent.exists()
     assert library.delete(note["id"]) is False
+
+
+def test_delete_picture_leaves_the_note_and_the_other_picture(tmp_path) -> None:
+    library = Library(tmp_path)
+    note = library.add_text("两张图。", "图片", chat=None)
+    library.add_picture(note["id"], "a.png", b"one")
+    library.add_picture(note["id"], "b.jpg", b"two")
+    updated = library.delete_picture(note["id"], "1.png")
+    assert updated["pictures"] == ["1.jpg"]
+    assert updated["body"] == "两张图。"
+    assert library.picture_path(note["id"], "1.png") is None
+    assert library.picture_path(note["id"], "1.jpg").read_bytes() == b"two"
+    again = library.add_picture(note["id"], "c.png", b"three")
+    assert again["pictures"] == ["1.jpg", "1.png"]
+    assert library.picture_path(note["id"], "1.jpg").read_bytes() == b"two"
+    assert library.delete_picture(note["id"], "missing.png") is None
+    assert library.delete_picture(note["id"], "../1.png") is None
+    assert library.delete_picture("missing", "1.jpg") is None
 
 
 def test_picture_is_stored_beside_the_note(tmp_path) -> None:
