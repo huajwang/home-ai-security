@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -143,6 +144,31 @@ class Library:
 
     def search(self, query: str) -> list[dict[str, Any]]:
         return search_notes(self.list_notes(), query)
+
+    def update(self, note_id: str, body: str, title: str) -> Optional[dict[str, Any]]:
+        cleaned = body.strip()
+        with self._lock:
+            note = self.get(note_id)
+            if note is None:
+                return None
+            if not cleaned:
+                return {"ok": False, "message": "empty"}
+            note["title"] = title.strip() or _first_line(cleaned)
+            note["body"] = cleaned
+            self._write(note)
+        self._notify({"type": "library_changed", "id": note_id})
+        return {"ok": True, **note}
+
+    def delete(self, note_id: str) -> bool:
+        if self.get(note_id) is None:
+            return False
+        note_path = self._notes / f"{note_id}.json"
+        note_path.unlink(missing_ok=True)
+        folder = self._pictures / note_id
+        if folder.is_dir():
+            shutil.rmtree(folder)
+        self._notify({"type": "library_changed", "id": note_id})
+        return True
 
     def _save(
         self,

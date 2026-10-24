@@ -140,7 +140,7 @@ def create_app() -> FastAPI:
         page = static_dir / "library.html"
         if not page.is_file():
             return HTMLResponse("<p>Library page missing.</p>", status_code=404)
-        return FileResponse(page)
+        return FileResponse(page, headers={"Cache-Control": "no-cache"})
 
     @app.get("/health")
     def health() -> dict[str, str]:

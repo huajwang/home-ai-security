@@ -56,6 +56,35 @@ def test_dictation_joins_chunks_and_an_empty_one_is_not_saved(tmp_path) -> None:
     assert empty["state"] == "empty"
 
 
+def test_update_rewrites_the_note_and_keeps_its_picture(tmp_path) -> None:
+    library = Library(tmp_path)
+    note = library.add_text("旧内容。", "旧标题", chat=None)
+    library.add_picture(note["id"], "filter.png", b"png-bytes")
+    updated = library.update(note["id"], "新内容，金霸王。", "新标题")
+    assert updated["ok"] is True
+    assert updated["title"] == "新标题"
+    assert updated["body"] == "新内容，金霸王。"
+    assert updated["pictures"] == ["1.png"]
+    assert updated["created_at"] == note["created_at"]
+    assert library.get(note["id"])["title"] == "新标题"
+    assert library.update(note["id"], "   ", "标题")["message"] == "empty"
+    assert library.get(note["id"])["body"] == "新内容，金霸王。"
+    assert library.update("missing", "内容", "标题") is None
+
+
+def test_delete_removes_the_note_and_its_pictures(tmp_path) -> None:
+    library = Library(tmp_path)
+    note = library.add_text("炉子滤芯尺寸。", "滤芯", chat=None)
+    updated = library.add_picture(note["id"], "filter.png", b"png-bytes")
+    picture = library.picture_path(updated["id"], "1.png")
+    assert picture is not None and picture.is_file()
+    assert library.delete(note["id"]) is True
+    assert library.get(note["id"]) is None
+    assert not picture.exists()
+    assert not picture.parent.exists()
+    assert library.delete(note["id"]) is False
+
+
 def test_picture_is_stored_beside_the_note(tmp_path) -> None:
     library = Library(tmp_path)
     note = library.add_text("炉子滤芯尺寸。", "滤芯", chat=None)
