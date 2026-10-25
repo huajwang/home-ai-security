@@ -19,11 +19,13 @@ router = APIRouter(prefix="/v1/library", tags=["library"])
 class NoteBody(BaseModel):
     text: str
     title: str = ""
+    category: str = ""
 
 
 class NoteUpdate(BaseModel):
     text: str
     title: str = ""
+    category: str = ""
 
 
 class ChunkBody(BaseModel):
@@ -50,6 +52,7 @@ def _public(note: dict[str, Any]) -> dict[str, Any]:
         "id": note_id,
         "title": note.get("title") or "",
         "body": note.get("body") or "",
+        "category": note.get("category") or "Notes",
         "created_at": note.get("created_at"),
         "pictures": pictures,
     }
@@ -71,7 +74,7 @@ def create_note(
     _: dict[str, Any] = Depends(current_principal),
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
-    saved = services["library"].add_text(body.text, body.title, _chat())
+    saved = services["library"].add_text(body.text, body.title, _chat(), body.category)
     if not saved.get("ok", True) and saved.get("message") == "empty":
         raise_api(400, "empty", "The note is empty.")
     return _public(saved)
@@ -101,7 +104,7 @@ def update_note(
     _: dict[str, Any] = Depends(current_principal),
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
-    saved = services["library"].update(note_id, body.text, body.title)
+    saved = services["library"].update(note_id, body.text, body.title, body.category)
     if saved is None:
         raise_api(404, "not_found", "That note does not exist.")
     if saved.get("message") == "empty":
@@ -133,6 +136,19 @@ async def add_picture(
     note = services["library"].add_picture(note_id, file.filename or "picture.jpg", data)
     if note is None:
         raise_api(404, "not_found", "That note does not exist.")
+    return _public(note)
+
+
+@router.delete("/notes/{note_id}/pictures/{name}")
+def delete_picture(
+    note_id: str,
+    name: str,
+    _: dict[str, Any] = Depends(current_principal),
+    services: dict[str, Any] = Depends(get_services),
+) -> dict[str, Any]:
+    note = services["library"].delete_picture(note_id, name)
+    if note is None:
+        raise_api(404, "not_found", "That picture does not exist.")
     return _public(note)
 
 

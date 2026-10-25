@@ -6,14 +6,16 @@
   <title>Knowledge library</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #0b1120;
-      --panel: #111827;
-      --line: #1f2937;
-      --text: #e5e7eb;
-      --muted: #9ca3af;
-      --accent: #2563eb;
-      --danger: #b91c1c;
+      color-scheme: light;
+      --bg: #ffffff;
+      --soft: #f6f5f4;
+      --line: #e9e8e6;
+      --text: #191919;
+      --muted: #6f6e69;
+      --accent: #191919;
+      --danger: #c4322c;
+      --serif: "Iowan Old Style", Palatino, "Palatino Linotype", "Songti SC", "Noto Serif SC", Georgia, serif;
+      --sans: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
     }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
@@ -23,7 +25,7 @@
       height: 100vh;
       height: 100dvh;
       overflow: hidden;
-      font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      font-family: var(--sans);
       background: var(--bg);
       color: var(--text);
     }
@@ -36,34 +38,35 @@
       place-items: center;
       padding: 24px;
       overflow: auto;
+      background: var(--soft);
     }
     .signin {
       width: min(420px, 100%);
-      background: var(--panel);
+      background: white;
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 28px 24px 22px;
     }
-    .signin h1 { margin: 0 0 6px; font-size: 1.45rem; }
-    .signin p { margin: 0 0 18px; color: var(--muted); font-size: 0.92rem; }
+    .signin h1 { margin: 0 0 6px; font-family: var(--serif); font-size: 2rem; font-weight: 650; }
+    .signin p { margin: 0 0 18px; color: var(--muted); font-size: 0.95rem; }
     label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 0.82rem; }
     input, textarea {
       width: 100%;
-      background: #0b1120;
+      background: white;
       color: var(--text);
-      border: 1px solid #374151;
+      border: 1px solid #e3e2e0;
       border-radius: 8px;
       padding: 10px 12px;
     }
     textarea { min-height: 220px; resize: vertical; line-height: 1.5; }
     .primary, .quiet, .danger {
       border: 0;
-      border-radius: 8px;
+      border-radius: 999px;
       padding: 9px 14px;
     }
     .primary { background: var(--accent); color: white; }
-    .quiet { background: #1f2937; color: var(--text); }
-    .danger { background: transparent; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .quiet { background: var(--soft); color: var(--text); }
+    .danger { background: transparent; color: var(--danger); border: 1px solid #f0c2c0; border-radius: 8px; }
     .danger.confirm { background: var(--danger); color: white; border: 0; }
     .signin .primary { width: 100%; margin-top: 16px; }
     .app {
@@ -73,85 +76,138 @@
       flex-direction: column;
       overflow: hidden;
     }
-    header {
+    .top {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      gap: 22px;
       flex-shrink: 0;
-      padding: 14px 20px;
+      padding: 14px 28px 0;
       padding-top: max(14px, env(safe-area-inset-top));
-      border-bottom: 1px solid var(--line);
-      background: #0f172a;
+      background: white;
     }
-    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    header strong { font-size: 1.05rem; }
-    .back { display: none; }
-    .shell {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 320px minmax(0, 1fr);
-      min-height: 0;
-    }
-    aside {
-      min-height: 0;
-      overflow: hidden;
-      border-right: 1px solid var(--line);
-      padding: 16px;
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 0; }
+    .brand strong { font-family: var(--serif); font-size: 1.35rem; font-weight: 650; }
+    .back { display: none; border-radius: 999px; }
+    .categories {
       display: flex;
-      flex-direction: column;
-      gap: 10px;
-      background: #0f172a;
-    }
-    .list {
+      align-items: center;
+      gap: 18px;
       flex: 1;
-      min-height: 0;
-      overflow: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+      min-width: 0;
+      overflow-x: auto;
       -webkit-overflow-scrolling: touch;
     }
-    .row {
+    .cat {
+      flex: 0 0 auto;
+      background: transparent;
+      color: var(--muted);
+      border: 0;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+      padding: 12px 0 10px;
+      font-size: 0.98rem;
+    }
+    .cat.active { color: var(--text); font-weight: 650; border-bottom-color: var(--text); }
+    .tools { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; padding-bottom: 8px; }
+    .tools input { width: 180px; background: var(--soft); border-color: transparent; }
+    .stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .board, .reader { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; }
+    .app.reading .board { display: none; }
+    .app:not(.reading) .reader { display: none; }
+    .app.reading .back { display: inline-flex; }
+    .board { padding: 28px 32px 56px; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 36px 28px;
+    }
+    .card {
+      display: block;
+      width: 100%;
       text-align: left;
       background: transparent;
-      color: var(--text);
-      border: 1px solid transparent;
-      border-radius: 10px;
-      padding: 10px 12px;
+      color: inherit;
+      border: 0;
+      padding: 0;
     }
-    .row.active { background: #1e293b; border-color: #334155; }
-    .row strong { display: block; font-size: 0.95rem; overflow-wrap: anywhere; }
-    .row span { color: var(--muted); font-size: 0.78rem; }
-    .reader {
-      min-width: 0;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
+    .card img, .cover {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      border-radius: 12px;
+      background: var(--soft);
+      margin-bottom: 14px;
+      display: block;
+    }
+    .kicker { color: var(--muted); font-size: 0.82rem; margin: 0 0 6px; }
+    .card h2 {
+      margin: 0 0 8px;
+      font-family: var(--serif);
+      font-size: 1.55rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    .card p {
+      margin: 0;
+      color: #37352f;
+      font-size: 0.98rem;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
       overflow: hidden;
     }
     .pane {
-      flex: 1;
-      min-height: 0;
-      overflow: auto;
-      padding: 28px 32px 48px;
-      max-width: 860px;
-      -webkit-overflow-scrolling: touch;
+      width: min(740px, 100%);
+      margin: 0 auto;
+      padding: 36px 24px 72px;
     }
-    .pane h2 { margin: 0 0 8px; font-size: 1.6rem; }
-    .title-edit { font-size: 1.4rem; font-weight: 650; margin-bottom: 12px; }
+    .pane h2 {
+      margin: 0 0 8px;
+      font-family: var(--serif);
+      font-size: 2.5rem;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+    .title-edit { font-family: var(--serif); font-size: 1.8rem; font-weight: 650; margin-bottom: 12px; }
     .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 18px; }
-    .body { white-space: pre-wrap; line-height: 1.6; font-size: 1.02rem; }
-    .pictures { display: grid; gap: 12px; margin-top: 20px; }
-    .pictures img { width: 100%; border-radius: 12px; background: #020617; }
+    .body { white-space: pre-wrap; line-height: 1.65; font-size: 1.05rem; }
+    .pictures { display: grid; gap: 12px; margin-top: 24px; }
+    .shot { position: relative; }
+    .shot img { width: 100%; border-radius: 12px; background: var(--soft); display: block; }
+    .remove-photo {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(25, 25, 25, 0.78);
+      color: white;
+      display: grid;
+      place-items: center;
+    }
+    .remove-photo svg { width: 18px; height: 18px; display: block; }
+    .remove-photo.confirm {
+      width: auto;
+      min-width: 40px;
+      padding: 0 12px;
+      background: var(--danger);
+      color: white;
+      font-size: 0.85rem;
+    }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 22px; }
     .pick {
       display: inline-flex;
       align-items: center;
       margin: 0;
-      background: #1f2937;
+      background: var(--soft);
       color: var(--text);
-      border-radius: 8px;
+      border-radius: 999px;
       padding: 9px 14px;
       cursor: pointer;
       font-size: 1rem;
@@ -167,29 +223,30 @@
       border: 0;
     }
     .empty { color: var(--muted); line-height: 1.5; }
-    .status { min-height: 1.2em; color: #93c5fd; font-size: 0.88rem; margin: 8px 0 0; }
+    .status { min-height: 1.2em; color: #3156c4; font-size: 0.88rem; margin: 8px 0 0; }
     .status-bar {
       flex-shrink: 0;
       margin: 0;
-      padding: 4px 20px max(10px, env(safe-area-inset-bottom));
+      padding: 4px 28px max(10px, env(safe-area-inset-bottom));
     }
     @media (max-width: 1100px) {
-      .shell { grid-template-columns: 260px minmax(0, 1fr); }
-      .pane { padding: 22px 22px 40px; }
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .board { padding: 22px 22px 48px; }
     }
     @media (max-width: 719px) {
-      header { padding: 12px 14px; padding-top: max(12px, env(safe-area-inset-top)); }
-      .shell { grid-template-columns: minmax(0, 1fr); }
-      .app.reading aside { display: none; }
-      .app:not(.reading) .reader { display: none; }
-      .app.reading .back { display: inline-flex; }
-      .app.reading .brand strong { display: none; }
-      aside { border-right: 0; padding: 12px; }
-      .pane { padding: 16px 16px 32px; max-width: none; }
-      .pane h2 { font-size: 1.35rem; }
+      .top { flex-wrap: wrap; gap: 8px 12px; padding: 12px 14px 0; padding-top: max(12px, env(safe-area-inset-top)); }
+      .brand { flex: 1; }
+      .categories { order: 3; flex: 1 0 100%; gap: 16px; }
+      .tools { order: 4; flex: 1 0 100%; margin-left: 0; padding-bottom: 10px; }
+      .tools input { width: auto; flex: 1; min-width: 0; }
+      .board { padding: 18px 14px 40px; }
+      .cards { grid-template-columns: 1fr; gap: 28px; }
+      .pane { padding: 20px 16px 48px; }
+      .pane h2 { font-size: 1.85rem; }
       textarea { min-height: 40vh; }
-      .row { padding: 12px; }
-      .primary, .quiet, .danger, .pick { min-height: 44px; }
+      .primary, .quiet, .danger, .pick, .remove-photo, .cat { min-height: 44px; }
+      .cat { padding-top: 8px; }
+      .remove-photo { width: 44px; height: 44px; }
     }
   </style>
 </head>
@@ -208,19 +265,21 @@
   </div>
 
   <div class="app" id="app" hidden>
-    <header>
+    <header class="top">
       <div class="brand">
-        <button class="back quiet" id="back" type="button">Notes</button>
+        <button class="back quiet" id="back" type="button">Library</button>
         <strong>Knowledge library</strong>
       </div>
-      <button class="quiet" id="signout" type="button">Sign out</button>
-    </header>
-    <div class="shell">
-      <aside>
-        <input id="query" placeholder="Search notes" />
+      <nav class="categories" id="categories" aria-label="Categories"></nav>
+      <div class="tools">
+        <input id="query" placeholder="Search" aria-label="Search notes" />
         <button class="primary" id="new-note" type="button">New note</button>
-        <div class="list" id="list"></div>
-      </aside>
+        <button class="quiet" id="signout" type="button">Sign out</button>
+      </div>
+    </header>
+    <datalist id="known-categories"></datalist>
+    <div class="stage">
+      <div class="board" id="board"></div>
       <div class="reader" id="reader">
         <section class="pane" id="pane"></section>
       </div>
@@ -232,11 +291,12 @@
     const tokenKey = "libraryToken";
     let notes = [];
     let selected = "";
+    let category = "Latest";
     let composing = false;
     let editing = false;
     let confirmDelete = false;
+    let confirmPicture = "";
     let showReader = false;
-    const phoneQuery = window.matchMedia("(max-width: 719px)");
 
     function token() { return sessionStorage.getItem(tokenKey) || ""; }
     function setStatus(text) {
@@ -255,47 +315,145 @@
       const join = path.includes("?") ? "&" : "?";
       return path + join + "access_token=" + encodeURIComponent(token());
     }
+    function pictureName(path) {
+      const clean = String(path).split("?")[0];
+      return decodeURIComponent(clean.slice(clean.lastIndexOf("/") + 1));
+    }
+    function trashIcon() {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("aria-hidden", "true");
+      const shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      shape.setAttribute("fill", "currentColor");
+      shape.setAttribute("d", "M9 3h6l1 2h4v2H4V5h4l1-2zm-2 6h10l-1 12H8L7 9zm3 2v8h2v-8h-2zm4 0v8h2v-8h-2z");
+      svg.append(shape);
+      return svg;
+    }
     function when(value) {
       if (!value) return "";
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return "";
       return date.toLocaleString();
     }
+    function excerpt(text) {
+      const flat = String(text || "").replace(/\s+/g, " ").trim();
+      return flat.length > 140 ? flat.slice(0, 140) + "…" : flat;
+    }
+    function noteCategory(note) { return note.category || "Notes"; }
+    function categoryNames() {
+      const names = [];
+      const seen = new Set(["latest"]);
+      notes.forEach((note) => {
+        const name = noteCategory(note);
+        const key = name.toLocaleLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        names.push(name);
+      });
+      return names;
+    }
+    function queryText() { return document.getElementById("query").value.trim().toLowerCase(); }
+    function visibleNotes() {
+      const needle = queryText();
+      return notes.filter((note) => {
+        if (category !== "Latest" && noteCategory(note).toLocaleLowerCase() !== category.toLocaleLowerCase()) return false;
+        if (!needle) return true;
+        return (noteCategory(note) + "\n" + (note.title || "") + "\n" + (note.body || "")).toLowerCase().includes(needle);
+      });
+    }
     function showApp(on) {
       document.getElementById("gate").hidden = on;
       document.getElementById("app").hidden = !on;
     }
-    function drawList() {
-      const root = document.getElementById("list");
-      root.replaceChildren();
-      if (!notes.length) {
-        const empty = document.createElement("p");
-        empty.className = "empty";
-        empty.textContent = document.getElementById("query").value.trim()
-          ? "No notes matched."
-          : "No notes yet.";
-        root.append(empty);
-        return;
-      }
-      notes.forEach((note) => {
+    function openNote(id) {
+      composing = false;
+      editing = false;
+      confirmDelete = false;
+      confirmPicture = "";
+      selected = id;
+      showReader = true;
+      draw();
+    }
+    function drawCategories() {
+      const nav = document.getElementById("categories");
+      const names = categoryNames();
+      const datalist = document.getElementById("known-categories");
+      datalist.replaceChildren();
+      names.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        datalist.append(option);
+      });
+      nav.replaceChildren();
+      ["Latest"].concat(names).forEach((name) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "row" + (note.id === selected && !composing ? " active" : "");
-        const title = document.createElement("strong");
-        title.textContent = note.title || "Note";
-        const date = document.createElement("span");
-        date.textContent = when(note.created_at);
-        button.append(title, date);
+        button.className = "cat" + (category === name ? " active" : "");
+        button.textContent = name;
         button.addEventListener("click", () => {
+          category = name;
+          showReader = false;
           composing = false;
           editing = false;
           confirmDelete = false;
-          selected = note.id;
-          showReader = true;
+          confirmPicture = "";
           draw();
         });
-        root.append(button);
+        nav.append(button);
       });
+    }
+    function drawBoard() {
+      const board = document.getElementById("board");
+      board.replaceChildren();
+      const shown = visibleNotes();
+      if (!shown.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = queryText()
+          ? "No notes matched."
+          : (notes.length ? "No notes in this category." : "Paste or dictate the first note.");
+        board.append(empty);
+        return;
+      }
+      const cards = document.createElement("div");
+      cards.className = "cards";
+      shown.forEach((note) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "card";
+        if (note.pictures && note.pictures[0]) {
+          const image = document.createElement("img");
+          image.src = pictureUrl(note.pictures[0]);
+          image.alt = "";
+          button.append(image);
+        } else {
+          const cover = document.createElement("div");
+          cover.className = "cover";
+          button.append(cover);
+        }
+        const kicker = document.createElement("div");
+        kicker.className = "kicker";
+        kicker.textContent = noteCategory(note);
+        const title = document.createElement("h2");
+        title.textContent = note.title || "Note";
+        const summary = document.createElement("p");
+        summary.textContent = excerpt(note.body);
+        button.append(kicker, title, summary);
+        button.addEventListener("click", () => openNote(note.id));
+        cards.append(button);
+      });
+      board.append(cards);
+    }
+    function categoryField(id, value) {
+      const label = document.createElement("label");
+      label.htmlFor = id;
+      label.textContent = "Category";
+      const input = document.createElement("input");
+      input.id = id;
+      input.value = value || "Notes";
+      input.setAttribute("list", "known-categories");
+      input.maxLength = 40;
+      return [label, input];
     }
     function drawPane() {
       const pane = document.getElementById("pane");
@@ -303,6 +461,7 @@
       if (composing) {
         const title = document.createElement("h2");
         title.textContent = "New note";
+        const fields = categoryField("new-category", category === "Latest" ? "Notes" : category);
         const box = document.createElement("textarea");
         box.id = "text";
         box.placeholder = "Paste a note";
@@ -314,25 +473,28 @@
         const actions = document.createElement("div");
         actions.className = "actions";
         actions.append(save);
-        pane.append(title, box, actions);
+        pane.append(title, fields[0], fields[1], box, actions);
         return;
       }
       const note = notes.find((item) => item.id === selected);
       if (!note) {
         const empty = document.createElement("p");
         empty.className = "empty";
-        empty.textContent = document.getElementById("query").value.trim()
-          ? "No notes matched."
-          : "Paste or dictate the first note.";
+        empty.textContent = "Paste or dictate the first note.";
         pane.append(empty);
         return;
       }
+      const kicker = document.createElement("div");
+      kicker.className = "kicker";
+      kicker.textContent = noteCategory(note);
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.textContent = when(note.created_at);
       let title;
       let body;
+      const fields = [];
       if (editing) {
+        fields.push.apply(fields, categoryField("edit-category", noteCategory(note)));
         title = document.createElement("input");
         title.id = "edit-title";
         title.className = "title-edit";
@@ -350,10 +512,22 @@
       const pictures = document.createElement("div");
       pictures.className = "pictures";
       (note.pictures || []).forEach((path) => {
+        const name = pictureName(path);
+        const shot = document.createElement("div");
+        shot.className = "shot";
         const image = document.createElement("img");
         image.src = pictureUrl(path);
         image.alt = "";
-        pictures.append(image);
+        const removePhoto = document.createElement("button");
+        removePhoto.type = "button";
+        const armed = confirmPicture === name;
+        removePhoto.className = "remove-photo" + (armed ? " confirm" : "");
+        removePhoto.setAttribute("aria-label", armed ? "Delete this picture?" : "Delete picture");
+        if (armed) removePhoto.textContent = "Delete?";
+        else removePhoto.append(trashIcon());
+        removePhoto.addEventListener("click", () => removePicture(note.id, name));
+        shot.append(image, removePhoto);
+        pictures.append(shot);
       });
       const edit = document.createElement("button");
       edit.type = "button";
@@ -367,6 +541,7 @@
         edit.addEventListener("click", () => {
           editing = true;
           confirmDelete = false;
+          confirmPicture = "";
           drawPane();
         });
       }
@@ -386,7 +561,10 @@
       remove.className = "danger" + (confirmDelete ? " confirm" : "");
       remove.type = "button";
       remove.textContent = confirmDelete ? "Delete this note?" : "Delete";
-      remove.addEventListener("click", () => removeNote(note.id));
+      remove.addEventListener("click", () => {
+        confirmPicture = "";
+        removeNote(note.id);
+      });
       const actions = document.createElement("div");
       actions.className = "actions";
       actions.append(edit, pick, print, remove);
@@ -402,35 +580,52 @@
         actions.append(cancel);
       }
       pane.append(title, meta, body, pictures, actions);
+      if (editing) fields.forEach((field) => pane.insertBefore(field, title));
+      else pane.insertBefore(kicker, title);
     }
     function syncLayout() {
-      document.getElementById("app").classList.toggle("reading", phoneQuery.matches && showReader);
+      document.getElementById("app").classList.toggle("reading", showReader);
     }
     function draw() {
-      drawList();
+      const names = categoryNames();
+      if (category !== "Latest" && !names.some((name) => name.toLocaleLowerCase() === category.toLocaleLowerCase())) {
+        category = "Latest";
+      }
+      drawCategories();
+      drawBoard();
       drawPane();
       syncLayout();
     }
-    async function load(query) {
-      const data = await api("/v1/library/notes?q=" + encodeURIComponent(query || ""), { headers: {} });
+    async function load() {
+      const data = await api("/v1/library/notes?q=", { headers: {} });
       notes = data.notes || [];
-      if (!notes.some((note) => note.id === selected)) selected = notes[0] ? notes[0].id : "";
+      const names = categoryNames();
+      if (category !== "Latest" && !names.some((name) => name.toLocaleLowerCase() === category.toLocaleLowerCase())) {
+        category = "Latest";
+      }
+      if (selected && !notes.some((note) => note.id === selected)) {
+        selected = "";
+        showReader = false;
+      }
       draw();
     }
     async function saveNote() {
       const text = document.getElementById("text").value.trim();
+      const chosen = document.getElementById("new-category").value.trim() || "Notes";
       if (!text) return;
       setStatus("Saving…");
       try {
         const saved = await api("/v1/library/notes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, category: chosen }),
         });
         composing = false;
         selected = saved.id;
+        category = saved.category || chosen;
+        showReader = true;
         setStatus("Saved.");
-        await load(document.getElementById("query").value);
+        await load();
       } catch (err) {
         setStatus(err.message);
       }
@@ -438,6 +633,7 @@
     async function saveEdit(id) {
       const title = document.getElementById("edit-title").value.trim();
       const text = document.getElementById("edit-body").value.trim();
+      const chosen = document.getElementById("edit-category").value.trim() || "Notes";
       if (!text) {
         setStatus("The note is empty.");
         return;
@@ -447,12 +643,13 @@
         await api("/v1/library/notes/" + id, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, title }),
+          body: JSON.stringify({ text, title, category: chosen }),
         });
         editing = false;
         selected = id;
+        category = chosen;
         setStatus("Saved.");
-        await load(document.getElementById("query").value);
+        await load();
       } catch (err) {
         setStatus(err.message);
       }
@@ -470,6 +667,29 @@
         draw();
       } catch (err) {
         setStatus(err.message);
+      }
+    }
+    async function removePicture(id, name) {
+      if (confirmPicture !== name) {
+        confirmPicture = name;
+        confirmDelete = false;
+        drawPane();
+        return;
+      }
+      setStatus("Deleting picture…");
+      try {
+        const saved = await api("/v1/library/notes/" + id + "/pictures/" + encodeURIComponent(name), {
+          method: "DELETE",
+          headers: {},
+        });
+        confirmPicture = "";
+        notes = notes.map((item) => item.id === id ? saved : item);
+        setStatus("Picture deleted.");
+        draw();
+      } catch (err) {
+        confirmPicture = "";
+        setStatus(err.message);
+        drawPane();
       }
     }
     async function printNote(id) {
@@ -495,8 +715,8 @@
         await api("/v1/library/notes/" + id, { method: "DELETE", headers: {} });
         confirmDelete = false;
         notes = notes.filter((item) => item.id !== id);
-        selected = notes[0] ? notes[0].id : "";
-        if (!selected) showReader = false;
+        selected = "";
+        showReader = false;
         setStatus("Deleted.");
         draw();
       } catch (err) {
@@ -522,7 +742,7 @@
         sessionStorage.setItem(tokenKey, data.access_token);
         showApp(true);
         setStatus("");
-        await load("");
+        await load();
       } catch (err) {
         setStatus(err.message);
       }
@@ -531,9 +751,11 @@
       sessionStorage.removeItem(tokenKey);
       notes = [];
       selected = "";
+      category = "Latest";
       composing = false;
       editing = false;
       showReader = false;
+      confirmPicture = "";
       showApp(false);
       setStatus("");
     });
@@ -541,6 +763,7 @@
       composing = true;
       editing = false;
       confirmDelete = false;
+      confirmPicture = "";
       showReader = true;
       draw();
     });
@@ -549,15 +772,13 @@
       composing = false;
       editing = false;
       confirmDelete = false;
+      confirmPicture = "";
       draw();
     });
-    phoneQuery.addEventListener("change", syncLayout);
-    document.getElementById("query").addEventListener("input", () => {
-      load(document.getElementById("query").value).catch((err) => setStatus(err.message));
-    });
+    document.getElementById("query").addEventListener("input", () => draw());
     if (token()) {
       showApp(true);
-      load("").catch((err) => setStatus(err.message));
+      load().catch((err) => setStatus(err.message));
     }
   </script>
 </body>

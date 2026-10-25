@@ -17,6 +17,11 @@ TITLE_PROMPT = (
 )
 
 
+def clean_category(value: str) -> str:
+    cleaned = " ".join((value or "").split())
+    return cleaned[:40] or "Notes"
+
+
 def strip_note_command(text: str) -> str:
     cleaned = " ".join(text.split())
     for phrase in ("记下来", "记个笔记"):
@@ -88,11 +93,17 @@ class Library:
             return {"had_note": False, "state": "empty"}
         return {"had_note": True, "state": "saved", **self._save(body, "", chat, note_id=active["id"])}
 
-    def add_text(self, body: str, title: str, chat: Optional[Callable[..., str]] = None) -> dict[str, Any]:
+    def add_text(
+        self,
+        body: str,
+        title: str,
+        chat: Optional[Callable[..., str]] = None,
+        category: str = "",
+    ) -> dict[str, Any]:
         cleaned = strip_note_command(body) or " ".join(body.split())
         if not cleaned:
             return {"ok": False, "message": "empty"}
-        saved = self._save(cleaned, title.strip(), chat)
+        saved = self._save(cleaned, title.strip(), chat, category=category)
         return {"ok": True, **saved}
 
     def add_picture(self, note_id: str, filename: str, data: bytes) -> Optional[dict[str, Any]]:
@@ -104,12 +115,30 @@ class Library:
             suffix = ".jpg"
         folder = self._pictures / note_id
         folder.mkdir(parents=True, exist_ok=True)
-        name = f"{len(list(folder.glob('*'))) + 1}{suffix}"
+        name = _next_picture_name(folder, suffix)
         (folder / name).write_bytes(data)
         pictures = list(note.get("pictures") or [])
         pictures.append(name)
         note["pictures"] = pictures
         self._write(note)
+        self._notify({"type": "library_changed", "id": note_id})
+        return note
+
+    def delete_picture(self, note_id: str, name: str) -> Optional[dict[str, Any]]:
+        safe = Path(name).name
+        if not safe or safe in {".", ".."} or safe != name:
+            return None
+        with self._lock:
+            note = self.get(note_id)
+            if note is None:
+                return None
+            pictures = list(note.get("pictures") or [])
+            if safe not in pictures:
+                return None
+            pictures.remove(safe)
+            note["pictures"] = pictures
+            (self._pictures / note_id / safe).unlink(missing_ok=True)
+            self._write(note)
         self._notify({"type": "library_changed", "id": note_id})
         return note
 
@@ -145,7 +174,7 @@ class Library:
     def search(self, query: str) -> list[dict[str, Any]]:
         return search_notes(self.list_notes(), query)
 
-    def update(self, note_id: str, body: str, title: str) -> Optional[dict[str, Any]]:
+    def update(self, note_id: str, body: str, title: str, category: str = "") -> Optional[dict[str, Any]]:
         cleaned = body.strip()
         with self._lock:
             note = self.get(note_id)
@@ -155,6 +184,7 @@ class Library:
                 return {"ok": False, "message": "empty"}
             note["title"] = title.strip() or _first_line(cleaned)
             note["body"] = cleaned
+            note["category"] = clean_category(category or str(note.get("category") or ""))
             self._write(note)
         self._notify({"type": "library_changed", "id": note_id})
         return {"ok": True, **note}
@@ -175,6 +205,7 @@ class Library:
         body: str,
         title: str,
         chat: Optional[Callable[..., str]],
+        category: str = "",
         note_id: str = "",
     ) -> dict[str, Any]:
         chosen = title.strip() or _title_from_model(body, chat) or _first_line(body)
@@ -182,6 +213,7 @@ class Library:
             "id": note_id or _new_id(),
             "title": chosen,
             "body": body,
+            "category": clean_category(category),
             "created_at": _now(),
             "pictures": [],
         }
@@ -223,6 +255,14 @@ def _title_from_model(body: str, chat: Optional[Callable[..., str]]) -> str:
 def _first_line(body: str) -> str:
     line = body.strip().splitlines()[0].strip()
     return line[:80] or "Note"
+
+
+def _next_picture_name(folder: Path, suffix: str) -> str:
+    used = {path.name for path in folder.glob("*")}
+    number = 1
+    while f"{number}{suffix}" in used:
+        number += 1
+    return f"{number}{suffix}"
 
 
 def _new_id() -> str:
