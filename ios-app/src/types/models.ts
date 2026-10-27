@@ -23,6 +23,14 @@ export interface Session {
   device?: Device;
 }
 
+export interface DoorContact {
+  ieee: string;
+  name: string;
+  open: boolean | null;
+  updatedAt?: string | null;
+  model?: string | null;
+}
+
 export interface SystemStatus {
   armed: boolean;
   alarmActive: boolean;
@@ -32,6 +40,7 @@ export interface SystemStatus {
   lockState: string;
   lockAdapter: string;
   hubTime: string;
+  contacts: DoorContact[];
 }
 
 export interface DoorEvent {

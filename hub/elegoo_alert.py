@@ -6,6 +6,7 @@ event it sends one ON line. Driveway events, a disarmed system, and events
 already seen at startup do not sound.
 
 The hub still publishes the phone notice. This does not unlock the door.
+A panic from the scene remote sounds even when the system is disarmed.
 """
 
 from __future__ import annotations
@@ -21,7 +22,9 @@ from typing import Any
 
 
 def should_sound(event: dict[str, Any], armed: bool) -> bool:
-    """One local burst for a confirmed person at the door, only while armed."""
+    """One local burst for a remote panic, or a person at the door while armed."""
+    if event.get("label") == "panic":
+        return True
     if not armed:
         return False
     if event.get("camera") != "door":
@@ -50,10 +53,9 @@ class AlertDecider:
         out: list[str] = []
         if self._armed and not armed:
             out.append("OFF")
-        if armed:
-            for event in fresh:
-                if should_sound(event, True):
-                    out.append("ON")
+        for event in fresh:
+            if should_sound(event, armed):
+                out.append("ON")
         self._armed = armed
         return out
 
@@ -105,12 +107,23 @@ class SerialSiren:
     def __init__(self, port: str, baud: int = 9600) -> None:
         import serial
 
+        self._port = port
+        self._baud = baud
+        self._serial = serial
         self._ser = serial.Serial(port, baud, timeout=1)
         time.sleep(2.0)
 
     def send(self, command: str) -> None:
         self._ser.write((command + "\n").encode())
         self._ser.flush()
+
+    def reopen(self) -> None:
+        try:
+            self._ser.close()
+        except Exception:
+            pass
+        self._ser = self._serial.Serial(self._port, self._baud, timeout=1)
+        time.sleep(2.0)
 
     def close(self) -> None:
         self._ser.close()
@@ -139,7 +152,18 @@ def run(port: str, hub_url: str, user: str, password: str, insecure: bool) -> No
                 time.sleep(2)
                 continue
             for command in decider.commands(events, armed):
-                siren.send(command)
+                try:
+                    siren.send(command)
+                except Exception as exc:
+                    print(f"Elegoo write failed: {exc}", flush=True)
+                    try:
+                        siren.reopen()
+                        siren.send(command)
+                        print(f"Elegoo reopened {port}", flush=True)
+                    except Exception as again:
+                        print(f"Elegoo reopen failed: {again}", flush=True)
+                        time.sleep(2)
+                        continue
                 print(command, flush=True)
             time.sleep(1)
     finally:

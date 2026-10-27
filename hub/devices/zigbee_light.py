@@ -7,6 +7,8 @@ import threading
 from typing import Any
 
 from hub import config
+from hub.devices.door_sensor import DoorRadio, looks_like_contact
+from hub.devices.scene_remote import ButtonPress, SceneRadio, looks_like_scene_remote
 
 ON_OFF_CLUSTER = 0x0006
 RETRY_SECONDS = 5
@@ -21,6 +23,13 @@ class ZigbeeLights:
         self._error: str | None = None
         self._stop = threading.Event()
         self._stay: asyncio.Future[None] | None = None
+        self._button_handler: Any = None
+        self._contact_handler: Any = None
+        self._last_button: str | None = None
+        self._on = False
+        self._on_lock = threading.Lock()
+        self._scene = SceneRadio(self)
+        self._doors = DoorRadio(self)
 
     def start(self) -> None:
         if not config.ZIGBEE_DEVICE:
@@ -49,17 +58,24 @@ class ZigbeeLights:
 
     def status(self) -> dict[str, Any]:
         lights: list[dict[str, str]] = []
+        remotes: list[dict[str, str]] = []
         error = self._error
         if self._app is not None and self._ready.is_set():
             try:
                 lights = self.list_lights()
             except Exception as exc:  # noqa: BLE001
                 error = str(exc)
+            try:
+                remotes = self.list_remotes()
+            except Exception as exc:  # noqa: BLE001
+                error = error or str(exc)
         return {
             "enabled": bool(config.ZIGBEE_DEVICE),
             "ready": self._app is not None and self._error is None,
             "error": error,
             "lights": lights,
+            "remotes": remotes,
+            "last_button": self._last_button,
         }
 
     def list_lights(self) -> list[dict[str, str]]:
@@ -67,9 +83,85 @@ class ZigbeeLights:
             return []
         return self._call(self._list())
 
+    def list_remotes(self) -> list[dict[str, str]]:
+        if self._app is None or not self._ready.is_set() or self._loop is None:
+            return []
+        return self._call(self._list_remotes())
+
     def set_on(self, turn_on: bool, ieee: str | None = None) -> dict[str, Any]:
         self._require_ready()
         return self._call(self._set_on(turn_on, ieee), timeout=60)
+
+    def is_on(self) -> bool:
+        with self._on_lock:
+            return self._on
+
+    def toggle(self, ieee: str | None = None) -> dict[str, Any]:
+        self._require_ready()
+        try:
+            current = self._call(self._current_on(ieee), timeout=12)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Zigbee light state unread: {exc}")
+            current = None
+        turn_on = (not self.is_on()) if current is None else (not current)
+        return self.set_on(turn_on, ieee)
+
+    def set_button_handler(self, handler: Any) -> None:
+        self._button_handler = handler
+
+    def set_contact_handler(self, handler: Any) -> None:
+        self._contact_handler = handler
+
+    def note_contact(self, ieee: str, opened: bool, model: str = "", confirmed: bool = False) -> None:
+        """Run a contact report off the radio thread."""
+        handler = self._contact_handler
+        if handler is None:
+            print(f"Door sensor {ieee}: {'door opened' if opened else 'door closed'}")
+            return
+        threading.Thread(
+            target=self._run_contact,
+            args=(handler, ieee, opened, model, confirmed),
+            name="door-sensor",
+            daemon=True,
+        ).start()
+
+    def _run_contact(self, handler: Any, ieee: str, opened: bool, model: str, confirmed: bool = False) -> None:
+        try:
+            try:
+                handler(ieee, opened, model, confirmed=confirmed)
+            except TypeError:
+                handler(ieee, opened, model)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Door sensor {ieee} failed: {exc}")
+
+    def list_contacts(self) -> list[dict[str, str]]:
+        if self._app is None or not self._ready.is_set() or self._loop is None:
+            return []
+        return self._call(self._list_contacts())
+
+    def note_button(self, press: ButtonPress) -> None:
+        """Run a remote press off the radio thread so a light command cannot deadlock it."""
+        self._last_button = f"{press.button} {press.kind}"
+        handler = self._button_handler
+        if handler is None:
+            print(f"Scene remote button {press.button} {press.kind}")
+            return
+        threading.Thread(
+            target=self._run_button,
+            args=(handler, press),
+            name="scene-remote",
+            daemon=True,
+        ).start()
+
+    def _run_button(self, handler: Any, press: ButtonPress) -> None:
+        try:
+            handler(press)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Scene remote button {press.button} {press.kind} failed: {exc}")
+
+    def _remember(self, turn_on: bool) -> None:
+        with self._on_lock:
+            self._on = turn_on
 
     def permit_join(self, seconds: int = 120) -> dict[str, Any]:
         self._require_ready()
@@ -77,7 +169,10 @@ class ZigbeeLights:
         return {
             "ok": True,
             "seconds": seconds,
-            "message": "Zigbee joining is open. Power the bulb off for 5 seconds, then on.",
+            "message": (
+                "Zigbee joining is open. Power a bulb off for 5 seconds, then on. "
+                "For the scene remote, hold button 1 for 10 seconds until the LEDs flash quickly."
+            ),
         }
 
     def _require_ready(self) -> None:
@@ -163,18 +258,69 @@ class ZigbeeLights:
             auto_form=True,
             start_radio=True,
         )
+        self._app = app
         if hasattr(app, "add_listener"):
             app.add_listener(_RadioLost(self))
-        self._app = app
+            app.add_listener(self._scene)
+            app.add_listener(self._doors)
 
     def _stopped(self) -> asyncio.Future[None]:
         assert self._loop is not None
         self._stay = self._loop.create_future()
         return self._stay
 
+    async def _list_contacts(self) -> list[dict[str, str]]:
+        found: list[dict[str, str]] = []
+        for device in (getattr(self._app, "devices", {}) or {}).values():
+            if not looks_like_contact(device):
+                continue
+            model = ""
+            try:
+                model = str(getattr(device, "model", "") or "").replace("\x00", "").strip()
+            except Exception:  # noqa: BLE001
+                model = ""
+            found.append({"ieee": str(getattr(device, "ieee", "") or ""), "model": model})
+        return [item for item in found if item["ieee"]]
+
+    async def _list_remotes(self) -> list[dict[str, str]]:
+        found: list[dict[str, str]] = []
+        for device in (getattr(self._app, "devices", {}) or {}).values():
+            if not looks_like_scene_remote(device):
+                continue
+            model = ""
+            try:
+                model = str(getattr(device, "model", "") or "").replace("\x00", "").strip()
+            except Exception:  # noqa: BLE001
+                model = ""
+            found.append({"ieee": str(getattr(device, "ieee", "") or ""), "model": model})
+        return [item for item in found if item["ieee"]]
+
     async def _permit(self, seconds: int) -> None:
         await self._app.permit(seconds)
         print(f"Zigbee permit join for {seconds}s")
+
+    async def _current_on(self, ieee: str | None) -> bool | None:
+        matches = _light_endpoints(self._app)
+        if ieee:
+            targeted = [
+                item for item in matches if str(item[0].ieee).lower() == ieee.lower()
+            ]
+            if targeted:
+                matches = targeted
+        if not matches:
+            return None
+        _device, endpoint = matches[0]
+        try:
+            cluster = endpoint.in_clusters[ON_OFF_CLUSTER]
+            result = await cluster.read_attributes(["on_off"])
+            values = result[0] if isinstance(result, tuple) else result
+            value = values.get("on_off")
+        except Exception as exc:  # noqa: BLE001
+            print(f"Zigbee light state unread: {exc}")
+            return None
+        if value is None:
+            return None
+        return bool(value)
 
     async def _list(self) -> list[dict[str, str]]:
         lights = []
@@ -225,6 +371,7 @@ class ZigbeeLights:
             self._on_radio_lost(dead)
         if not reached:
             raise RuntimeError(f"No bulb acknowledged the {state} command")
+        self._remember(turn_on)
         return {
             "ieee": reached[0],
             "name": "Zigbee bulb",

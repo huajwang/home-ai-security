@@ -2,6 +2,7 @@ import { SessionStore } from '../storage/sessionStore';
 import {
   AssistantMedia,
   AssistantResponse,
+  DoorContact,
   DoorEvent,
   EventSearch,
   LockStatus,
@@ -14,6 +15,11 @@ export class HubError extends Error {
     super(message);
     this.name = 'HubError';
   }
+}
+
+function idsFrom(raw: any): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => String(item?.ieee || '')).filter(Boolean);
 }
 
 export class HubClient {
@@ -166,6 +172,7 @@ export class HubClient {
       lockState: lock.state || 'unknown',
       lockAdapter: lock.adapter || 'mock',
       hubTime: obj.hub_time || new Date().toISOString(),
+      contacts: HubClient.parseContacts(obj.contacts),
     };
   }
 
@@ -263,9 +270,32 @@ export class HubClient {
     return `Light ${obj.state || 'off'}`;
   }
 
+  static async pairZigbee(seconds = 180): Promise<number> {
+    const obj = await HubClient.request<any>('/v1/lights/pair', {
+      method: 'POST',
+      body: { seconds },
+    });
+    return Number(obj.seconds) || seconds;
+  }
+
   static async pairBulb(): Promise<string> {
-    const obj = await HubClient.request<any>('/v1/lights/pair', { method: 'POST' });
-    return obj.message || 'Bulb pairing started';
+    const seconds = await HubClient.pairZigbee();
+    return `Listening for a bulb for ${seconds} seconds`;
+  }
+
+  static async listContactIds(): Promise<string[]> {
+    const obj = await HubClient.request<any>('/v1/contacts');
+    return idsFrom(obj.contacts);
+  }
+
+  static async listLightIds(): Promise<string[]> {
+    const obj = await HubClient.request<any>('/v1/lights');
+    return idsFrom(obj.lights);
+  }
+
+  static async listRemoteIds(): Promise<string[]> {
+    const obj = await HubClient.request<any>('/v1/lights');
+    return idsFrom(obj.remotes);
   }
 
   static async pairLock(): Promise<string> {
@@ -305,6 +335,19 @@ export class HubClient {
     const token = (await SessionStore.getAccessToken()) || '';
     const delimiter = relative.includes('?') ? '&' : '?';
     return `${baseUrl}${relative}${delimiter}access_token=${token}`;
+  }
+
+  private static parseContacts(raw: any): DoorContact[] {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item: any) => item && item.ieee)
+      .map((item: any) => ({
+        ieee: String(item.ieee),
+        name: item.name || 'Door',
+        open: item.open === true ? true : item.open === false ? false : null,
+        updatedAt: item.updated_at || null,
+        model: item.model || null,
+      }));
   }
 
   private static parseEvents(obj: any): DoorEvent[] {
