@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   USER_DATA: '@home_ai:user_data',
   HOME_NAME: '@home_ai:home_name',
   STATION_PIN: '@home_ai:station_pin',
+  CLOUD_LINK_URL: '@home_ai:cloud_link_url',
 };
 
 export const TAILSCALE_DOMAIN_HTTPS_URL = 'https://rock-5t.tailff6218.ts.net:8443';
@@ -51,6 +52,19 @@ export class SessionStore {
   static async getStationPin(): Promise<string> {
     const pin = await AsyncStorage.getItem(STORAGE_KEYS.STATION_PIN);
     return pin || '1234';
+  }
+
+  static async getCloudLinkUrl(): Promise<string> {
+    return (await AsyncStorage.getItem(STORAGE_KEYS.CLOUD_LINK_URL)) || '';
+  }
+
+  static async setCloudLinkUrl(url: string): Promise<void> {
+    const trimmed = url.trim().replace(/\/+$/, '');
+    if (!trimmed) {
+      await AsyncStorage.removeItem(STORAGE_KEYS.CLOUD_LINK_URL);
+      return;
+    }
+    await AsyncStorage.setItem(STORAGE_KEYS.CLOUD_LINK_URL, trimmed);
   }
 
   static async saveSession(session: Session): Promise<void> {

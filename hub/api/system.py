@@ -10,6 +10,7 @@ from fastapi.responses import Response
 
 from hub.api.contacts import contacts_body
 from hub.api.deps import current_principal, get_services
+from hub.cloudlink.settings import link_status
 from hub.errors import raise_api
 from hub.media.live import accept_camera_socket, push_jpeg_frames
 
@@ -36,6 +37,7 @@ def _system_body(services: dict[str, Any]) -> dict[str, Any]:
             "reachable": lock.reachable() if hasattr(lock, "reachable") else "unknown",
         },
         "contacts": contacts_body(services)["contacts"],
+        "link": link_status(),
         "hub_time": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
     }
 

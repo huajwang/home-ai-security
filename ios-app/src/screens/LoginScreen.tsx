@@ -30,11 +30,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('owner');
   const [password, setPassword] = useState('changeme');
   const [deviceName, setDeviceName] = useState('iPhone');
+  const [cloudUrl, setCloudUrl] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     SessionStore.getHubUrl().then((url) => {
       if (url) setHubUrlState(url);
+    });
+    SessionStore.getCloudLinkUrl().then((url) => {
+      if (url) setCloudUrl(url);
     });
   }, []);
 
@@ -140,6 +144,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 Home Wi-Fi LAN (10.0.0.83:8080)
               </Text>
             </TouchableOpacity>
+
+            {cloudUrl ? (
+              <TouchableOpacity
+                style={[styles.pill, hubUrl === cloudUrl && styles.pillActive]}
+                onPress={() => setHubUrlState(cloudUrl)}
+              >
+                <Ionicons
+                  name="cloud-outline"
+                  size={14}
+                  color={hubUrl === cloudUrl ? '#38BDF8' : '#94A3B8'}
+                />
+                <Text style={[styles.pillText, hubUrl === cloudUrl && styles.pillTextActive]}>
+                  Cloud Link ({cloudUrl.replace(/^https?:\/\//, '')})
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <View style={styles.divider} />

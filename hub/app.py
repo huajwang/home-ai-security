@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI):
     doorbell = None
     vision = None
     bulb = None
+    link_agent = None
     try:
         config.ensure_dirs()
         store = Store()
@@ -91,10 +92,17 @@ async def lifespan(app: FastAPI):
         doorbell.start(loop)
         driveway_cam.start(loop)
         monitor.start()
+        from hub.cloudlink.agent import LinkAgent
+
+        link_agent = LinkAgent()
+        link_agent.start(loop)
+        app.state.link_agent = link_agent
         _runtime_ready.set()
         yield
     finally:
         _runtime_ready.clear()
+        if link_agent is not None:
+            await link_agent.stop()
         if monitor is not None:
             monitor.stop()
         if driveway_cam is not None:

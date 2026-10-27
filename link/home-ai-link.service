@@ -1,0 +1,18 @@
+[Unit]
+Description=Home AI Cloud Link relay
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/home-ai-link
+Environment=LINK_REGION=cn
+Environment=LINK_HTTP_HOST=127.0.0.1
+Environment=LINK_HTTP_PORT=8091
+Environment=LINK_BACKUP_DIR=/var/lib/home-ai-link/backups
+EnvironmentFile=-/etc/home-ai-link.env
+ExecStart=/opt/home-ai-link/.venv/bin/python -m link
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

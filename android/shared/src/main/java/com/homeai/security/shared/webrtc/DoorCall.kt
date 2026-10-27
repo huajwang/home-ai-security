@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.util.Log
 import com.homeai.security.shared.api.HubClient
+import org.json.JSONArray
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.DataChannel
@@ -78,9 +79,10 @@ class DoorCall(
     }
 
     private fun startBlocking() {
-        val id = hub.createCall()
+        val started = hub.createCall()
+        val id = started.id
         sessionId = id
-        val iceServers = emptyList<PeerConnection.IceServer>()
+        val iceServers = iceServersFrom(started.iceServers)
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
         rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         rtcConfig.rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
@@ -234,5 +236,21 @@ class DoorCall(
 
     companion object {
         private const val TAG = "DoorCall"
+
+        private fun iceServersFrom(raw: JSONArray): List<PeerConnection.IceServer> {
+            val servers = ArrayList<PeerConnection.IceServer>()
+            for (index in 0 until raw.length()) {
+                val item = raw.optJSONObject(index) ?: continue
+                val urls = item.optString("urls")
+                if (urls.isBlank()) continue
+                val builder = PeerConnection.IceServer.builder(urls)
+                val username = item.optString("username")
+                val credential = item.optString("credential")
+                if (username.isNotBlank()) builder.setUsername(username)
+                if (credential.isNotBlank()) builder.setPassword(credential)
+                servers.add(builder.createIceServer())
+            }
+            return servers
+        }
     }
 }
