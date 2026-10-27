@@ -33,6 +33,20 @@ async def _run_servers(cert, key) -> None:
         http_server = uvicorn.Server(http_cfg)
         tasks.append(http_server.serve())
 
+    from hub.cloudlink.settings import link_certs_ready
+
+    if link_certs_ready():
+        link_cfg = uvicorn.Config(
+            "hub.app:app",
+            host="127.0.0.1",
+            port=config.LINK_LOCAL_PORT,
+            ssl_certfile=str(config.LINK_CERT_FILE),
+            ssl_keyfile=str(config.LINK_KEY_FILE),
+            reload=False,
+        )
+        tasks.append(uvicorn.Server(link_cfg).serve())
+        print(f"Cloud Link local TLS on 127.0.0.1:{config.LINK_LOCAL_PORT}")
+
     await asyncio.gather(*tasks)
 
 

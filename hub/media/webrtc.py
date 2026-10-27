@@ -243,16 +243,37 @@ class CallSession:
         self.talkback = None
 
 
+def _rtc_ice_servers(items: list[dict[str, str]]) -> list[Any]:
+    """TURN entries are only present for a Cloud Link call. LAN and Tailscale stay empty."""
+    if not items:
+        return []
+    from aiortc import RTCIceServer
+
+    servers = []
+    for item in items:
+        urls = item.get("urls")
+        if not urls:
+            continue
+        servers.append(
+            RTCIceServer(
+                urls=urls,
+                username=item.get("username") or None,
+                credential=item.get("credential") or None,
+            )
+        )
+    return servers
+
+
 class CallManager:
     def __init__(self, vision: VisionWorker) -> None:
         self.vision = vision
         self._calls: dict[str, CallSession] = {}
         self.clips = ClipRecorder(vision)
 
-    def create(self, user_id: int) -> CallSession:
+    def create(self, user_id: int, ice_servers: list[dict[str, str]] | None = None) -> CallSession:
         call_id = str(uuid.uuid4())
         # Empty list, not None: aiortc treats None as stun.l.google.com (5s STUN wait).
-        pc = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+        pc = RTCPeerConnection(RTCConfiguration(iceServers=_rtc_ice_servers(ice_servers or [])))
         session = CallSession(call_id, pc, user_id)
         pc.addTrack(AnnotatedVideoTrack(self.vision))
         mic = _try_microphone()

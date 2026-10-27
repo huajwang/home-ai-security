@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from hub.api.deps import current_principal, event_payload, get_services
+from hub.cloudlink.turn import ice_servers_for_host
 from hub.errors import raise_api
 
 router = APIRouter(prefix="/v1/calls", tags=["calls"])
@@ -26,11 +27,14 @@ class IceBody(BaseModel):
 
 @router.post("")
 async def create_call(
+    request: Request,
     principal: dict[str, Any] = Depends(current_principal),
     services: dict[str, Any] = Depends(get_services),
-) -> dict[str, str]:
-    session = services["calls"].create(int(principal["user"]["id"]))
-    return {"call_id": session.id}
+) -> dict[str, Any]:
+    host = request.headers.get("host", "")
+    ice = ice_servers_for_host(host)
+    session = services["calls"].create(int(principal["user"]["id"]), ice)
+    return {"call_id": session.id, "ice_servers": ice}
 
 
 @router.post("/{call_id}/offer")

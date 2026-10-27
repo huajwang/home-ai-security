@@ -138,12 +138,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [starting, setStarting] = useState(false);
   const [remaining, setRemaining] = useState(0);
   const [phase, setPhase] = useState<PairPhase>('ready');
+  const [cloudUrl, setCloudUrl] = useState('');
   const baseline = useRef<Set<string>>(new Set());
   const phaseRef = useRef<PairPhase>('ready');
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancel = false;
+    (async () => {
+      const saved = await SessionStore.getCloudLinkUrl();
+      if (!cancel && saved) setCloudUrl(saved);
+      try {
+        const status = await HubClient.getSystemStatus();
+        if (!cancel && status.linkUrl) {
+          await SessionStore.setCloudLinkUrl(status.linkUrl);
+          setCloudUrl(status.linkUrl);
+        }
+      } catch {
+        // The phone is away from the hub. The saved cloud address is still usable.
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -192,6 +214,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const chooseConnection = async (url: string) => {
     await SessionStore.setHubUrl(url);
     onHubUrl(url);
+  };
+
+  const chooseCloudLink = async () => {
+    if (!cloudUrl) {
+      Alert.alert(
+        'Cloud Link has no address yet',
+        'On home Wi-Fi, open Settings once. The hub shares its cloud address. Tailscale keeps working either way.',
+      );
+      return;
+    }
+    await chooseConnection(cloudUrl);
   };
 
   const confirmSignOut = () => {
@@ -273,6 +306,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </TouchableOpacity>
                 );
               })}
+              <TouchableOpacity
+                style={[styles.row, styles.rowBorder]}
+                onPress={chooseCloudLink}
+              >
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle}>Cloud Link</Text>
+                  <Text style={styles.rowDetail}>
+                    Reach this hub from outside without installing Tailscale. The hub calls out. Your router stays closed.
+                  </Text>
+                  <Text style={styles.rowAddress}>{cloudUrl ? hostOf(cloudUrl) : 'Waiting for an address from the hub'}</Text>
+                </View>
+                <Ionicons
+                  name={hubUrl === cloudUrl && cloudUrl ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={22}
+                  color={hubUrl === cloudUrl && cloudUrl ? '#38BDF8' : '#334155'}
+                />
+              </TouchableOpacity>
             </View>
 
             <Text style={styles.sectionLabel}>Add a device</Text>

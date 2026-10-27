@@ -41,6 +41,7 @@ export interface SystemStatus {
   lockAdapter: string;
   hubTime: string;
   contacts: DoorContact[];
+  linkUrl?: string | null;
 }
 
 export interface DoorEvent {

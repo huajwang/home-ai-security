@@ -15,8 +15,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+
+class CallStart(val id: String, val iceServers: JSONArray)
 
 class HubException(val code: String, message: String) : Exception(message)
 
@@ -171,7 +174,10 @@ class HubClient(private val store: SessionStore) {
         return request("POST", "/v1/lock/pair").optString("message", "Lock pairing started")
     }
 
-    fun createCall(): String = request("POST", "/v1/calls").getString("call_id")
+    fun createCall(): CallStart {
+        val obj = request("POST", "/v1/calls")
+        return CallStart(obj.getString("call_id"), obj.optJSONArray("ice_servers") ?: JSONArray())
+    }
 
     fun postOffer(callId: String, sdp: String): Pair<String, String> {
         val body = JSONObject().put("sdp", sdp).put("type", "offer")

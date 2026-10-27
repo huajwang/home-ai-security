@@ -173,6 +173,7 @@ export class HubClient {
       lockAdapter: lock.adapter || 'mock',
       hubTime: obj.hub_time || new Date().toISOString(),
       contacts: HubClient.parseContacts(obj.contacts),
+      linkUrl: obj.link && obj.link.url ? String(obj.link.url) : null,
     };
   }
 

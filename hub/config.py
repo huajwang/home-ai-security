@@ -132,6 +132,23 @@ LOGIN_RATE_LIMIT = int(os.getenv("HUB_LOGIN_RATE_LIMIT", "10"))
 UNLOCK_RATE_LIMIT = int(os.getenv("HUB_UNLOCK_RATE_LIMIT", "5"))
 RATE_WINDOW_SECONDS = int(os.getenv("HUB_RATE_WINDOW", "60"))
 
+# Cloud Link is optional. Empty values leave the hub on LAN and Tailscale only.
+LINK_URL = os.getenv("HUB_LINK_URL", "").strip()
+LINK_HOSTNAME = os.getenv("HUB_LINK_HOSTNAME", "").strip()
+LINK_FERNET_KEY = os.getenv("HUB_LINK_FERNET_KEY", "").strip()
+LINK_CERT_FILE = Path(os.getenv("HUB_LINK_CERT", str(CERT_DIR / "link.pem")))
+LINK_KEY_FILE = Path(os.getenv("HUB_LINK_KEY", str(CERT_DIR / "link-key.pem")))
+LINK_LOCAL_PORT = int(os.getenv("HUB_LINK_LOCAL_PORT", "8444"))
+LINK_SUFFIX = os.getenv("HUB_LINK_SUFFIX", ".link.yaojiabuy.com").strip()
+BACKUP_URL = os.getenv("HUB_BACKUP_URL", "").strip()
+BACKUP_KEY_FILE = DATA_DIR / "backup.key"
+TURN_HOST = os.getenv("HUB_TURN_HOST", "").strip()
+TURN_SECRET = os.getenv("HUB_TURN_SECRET", "").strip()
+TURN_PORT = int(os.getenv("HUB_TURN_PORT", "3478"))
+ALIYUN_ACCESS_KEY_ID = os.getenv("ALIYUN_ACCESS_KEY_ID", "").strip()
+ALIYUN_ACCESS_KEY_SECRET = os.getenv("ALIYUN_ACCESS_KEY_SECRET", "").strip()
+ACME_EMAIL = os.getenv("HUB_ACME_EMAIL", "").strip()
+
 
 def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
