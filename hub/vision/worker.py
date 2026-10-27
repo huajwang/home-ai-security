@@ -360,6 +360,7 @@ class VisionWorker:
 
             if not person_present:
                 target_confirmed = False
+                visit_ended = visit_notified
                 visit_notified = False
                 mask_detected_in_visit = False
                 lingering_since = None
@@ -367,6 +368,9 @@ class VisionWorker:
                 if snap["alarm_active"] and self.state.set_alarm(False):
                     print("Target gone → alarm cleared")
                     self._publish({"type": "alarm_cleared"})
+                    self._deter_light(False)
+                elif visit_ended and snap["armed"]:
+                    # A remote panic stays latched. The visit light still follows the person.
                     self._deter_light(False)
 
             for label, confidence in other_visits.update(seen_other, now):

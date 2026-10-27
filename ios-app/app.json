@@ -21,6 +21,10 @@
         "backgroundColor": "#0F172A"
       },
       "package": "com.homeai.security.ios"
-    }
+    },
+    "plugins": [
+      "expo-status-bar",
+      "expo-font"
+    ]
   }
 }

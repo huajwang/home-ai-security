@@ -210,7 +210,7 @@ export const AssistantModal: React.FC<AssistantModalProps> = ({
                   <ActivityIndicator size="small" color="#38BDF8" />
                   <Text style={styles.thinkingText}>Edge NPU is processing...</Text>
                 </View>
-              ) : null
+              ) : undefined
             }
           />
 

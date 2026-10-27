@@ -25,6 +25,7 @@ def get_services(request: Request) -> dict[str, Any]:
         "state": request.app.state.hub_state,
         "lock": request.app.state.lock,
         "lights": request.app.state.lights,
+        "doors": getattr(request.app.state, "doors", None),
         "bus": request.app.state.bus,
         "calls": request.app.state.calls,
         "vision": request.app.state.vision,

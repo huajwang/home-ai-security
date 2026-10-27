@@ -11,11 +11,13 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from hub import config
-from hub.api import assistant, auth, calls, driveway, events, lights, lock, system
+from hub.api import assistant, auth, calls, contacts, driveway, events, lights, lock, system
 from hub.auth import bootstrap_owner
 from hub.devices.doorbell import DoorbellWorker
 from hub.devices.driveway import DrivewayCamera
 from hub.devices.lock import build_lock_adapter
+from hub.devices.door_sensor import DoorContacts
+from hub.devices.scene_remote import SceneRemote
 from hub.devices.zigbee_light import ZigbeeLights
 from hub.errors import http_error_handler
 from hub.media.webrtc import CallManager
@@ -58,6 +60,10 @@ async def lifespan(app: FastAPI):
         bus = EventBus()
         lock_adapter = build_lock_adapter(store)
         bulb = ZigbeeLights()
+        remote = SceneRemote(state, bus, store, bulb)
+        bulb.set_button_handler(remote.handle)
+        doors = DoorContacts(bus, store, bulb)
+        bulb.set_contact_handler(doors.submit)
         vision = VisionWorker(store, state, bus)
         vision.lights = bulb
         doorbell = DoorbellWorker(store, bus, vision)
@@ -70,6 +76,8 @@ async def lifespan(app: FastAPI):
         app.state.bus = bus
         app.state.lock = lock_adapter
         app.state.lights = bulb
+        app.state.remote = remote
+        app.state.doors = doors
         app.state.vision = vision
         app.state.driveway = driveway_cam
         app.state.calls = calls_mgr
@@ -115,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router)
     app.include_router(lock.router)
     app.include_router(lights.router)
+    app.include_router(contacts.router)
     app.include_router(driveway.router)
     app.include_router(calls.router)
     app.include_router(assistant.router)

@@ -17,15 +17,13 @@ import { HubClient } from '../api/hubClient';
 import { EventSocket } from '../api/eventSocket';
 import {
   SessionStore,
-  TAILSCALE_DOMAIN_HTTPS_URL,
-  TAILSCALE_HTTP_URL,
-  LAN_HTTP_URL,
 } from '../storage/sessionStore';
-import { DoorEvent, LockStatus, SystemStatus } from '../types/models';
+import { DoorContact, DoorEvent, LockStatus, SystemStatus } from '../types/models';
 import { UnlockHelper } from '../utils/unlockHelper';
 import { SnapshotModal } from '../components/SnapshotModal';
 import { AssistantModal } from '../components/AssistantModal';
 import { CameraLive } from '../components/CameraLive';
+import { SettingsScreen } from './SettingsScreen';
 
 interface HomeScreenProps {
   onLogout: () => void;
@@ -48,19 +46,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
   // Modals
   const [selectedEvent, setSelectedEvent] = useState<DoorEvent | null>(null);
   const [assistantVisible, setAssistantVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   // Cameras state
   const [selectedCam, setSelectedCam] = useState<'door' | 'driveway'>('door');
 
   const socketRef = useRef<EventSocket | null>(null);
+  const loadSeq = useRef(0);
 
   const loadAllData = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const [sysStatus, lockStatus, eventList] = await Promise.all([
         HubClient.getSystemStatus(),
         HubClient.getLockStatus(),
         HubClient.getEvents(30),
       ]);
+      if (seq !== loadSeq.current) return;
       setSystem(sysStatus);
       setLock(lockStatus);
       setEvents(eventList);
@@ -91,6 +93,34 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
             reachable: event.reachable || current?.reachable,
           }));
           return;
+        }
+        if (event?.type === 'contact_changed' && event.ieee) {
+          const opened = event.open === true ? true : event.open === false ? false : null;
+          setSystem((current) => {
+            if (!current) return current;
+            const existing = current.contacts.some((contact) => contact.ieee === event.ieee);
+            const contacts = existing
+              ? current.contacts.map((contact) =>
+                  contact.ieee === event.ieee
+                    ? {
+                        ...contact,
+                        open: opened,
+                        name: event.name || contact.name,
+                        updatedAt: event.event?.ts || contact.updatedAt,
+                      }
+                    : contact
+                )
+              : [
+                  ...current.contacts,
+                  {
+                    ieee: String(event.ieee),
+                    name: event.name || 'Door',
+                    open: opened,
+                    updatedAt: event.event?.ts || null,
+                  },
+                ];
+            return { ...current, contacts };
+          });
         }
         loadAllData();
       },
@@ -168,24 +198,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
     }
   };
 
-  const handlePairBulb = async () => {
-    try {
-      const msg = await HubClient.pairBulb();
-      Alert.alert('Bulb Pairing', msg);
-    } catch (err: any) {
-      Alert.alert('Pairing Error', err?.message || 'Failed to start bulb pairing');
-    }
-  };
-
-  const handlePairLock = async () => {
-    try {
-      const msg = await HubClient.pairLock();
-      Alert.alert('Lock Pairing', msg);
-    } catch (err: any) {
-      Alert.alert('Pairing Error', err?.message || 'Failed to start lock pairing');
-    }
-  };
-
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setIsSearching(false);
@@ -236,36 +248,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
 
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => {
-              Alert.alert('Session & Network', `Hub URL: ${hubUrl}`, [
-                {
-                  text: 'Tailscale HTTPS (rock-5t)',
-                  onPress: async () => {
-                    await SessionStore.setHubUrl(TAILSCALE_DOMAIN_HTTPS_URL);
-                    setHubUrl(TAILSCALE_DOMAIN_HTTPS_URL);
-                    loadAllData();
-                  },
-                },
-                {
-                  text: 'Tailscale HTTP (8080)',
-                  onPress: async () => {
-                    await SessionStore.setHubUrl(TAILSCALE_HTTP_URL);
-                    setHubUrl(TAILSCALE_HTTP_URL);
-                    loadAllData();
-                  },
-                },
-                {
-                  text: 'LAN HTTP (8080)',
-                  onPress: async () => {
-                    await SessionStore.setHubUrl(LAN_HTTP_URL);
-                    setHubUrl(LAN_HTTP_URL);
-                    loadAllData();
-                  },
-                },
-                { text: 'Sign Out', style: 'destructive', onPress: onLogout },
-                { text: 'Cancel', style: 'cancel' },
-              ]);
-            }}
+            onPress={() => setSettingsVisible(true)}
           >
             <Ionicons name="settings-outline" size={20} color="#94A3B8" />
           </TouchableOpacity>
@@ -368,6 +351,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
           </View>
         </View>
 
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="enter-outline" size={22} color="#38BDF8" />
+              <Text style={styles.cardTitle}>Door Sensor</Text>
+            </View>
+          </View>
+          {!system?.contacts?.length ? (
+            <Text style={styles.controlSubtitle}>No door sensor joined</Text>
+          ) : (
+            system.contacts.map((contact) => (
+              <View key={contact.ieee} style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <View style={styles.iconCircleSmall}>
+                    <Ionicons
+                      name={contact.open ? 'log-out-outline' : 'log-in-outline'}
+                      size={20}
+                      color={contact.open ? '#F59E0B' : contact.open === false ? '#10B981' : '#94A3B8'}
+                    />
+                  </View>
+                  <View>
+                    <Text style={styles.controlTitle}>{contact.name}</Text>
+                    <Text style={styles.controlSubtitle}>{contactSeen(contact)}</Text>
+                  </View>
+                </View>
+                <View style={[styles.statusBadge, contactBadgeStyle(contact)]}>
+                  <Text style={[styles.statusBadgeText, contactTextStyle(contact)]}>
+                    {contact.open ? 'OPENED' : contact.open === false ? 'CLOSED' : 'WAITING'}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
         {/* Access & Smart Peripherals Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Entrance & Lights</Text>
@@ -446,19 +464,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
                 <Text style={styles.smallBtnText}>Off</Text>
               </TouchableOpacity>
             </View>
-          </View>
-
-          {/* Pairing buttons */}
-          <View style={styles.pairingRow}>
-            <TouchableOpacity style={styles.linkButton} onPress={handlePairBulb}>
-              <Ionicons name="bluetooth-outline" size={14} color="#60A5FA" />
-              <Text style={styles.linkButtonText}>Pair Bulb</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.linkButton} onPress={handlePairLock}>
-              <Ionicons name="key-outline" size={14} color="#60A5FA" />
-              <Text style={styles.linkButtonText}>Pair Lock</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -585,7 +590,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
                 >
                   <View style={styles.eventLeft}>
                     <View style={styles.eventIconCircle}>
-                      <Ionicons name="person-outline" size={18} color="#60A5FA" />
+                      <Ionicons name={eventIcon(item)} size={18} color="#60A5FA" />
                     </View>
                     <View>
                       <View style={styles.eventTitleRow}>
@@ -595,9 +600,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
                             <Text style={styles.maskBadgeText}>MASK</Text>
                           </View>
                         )}
-                        <Text style={styles.eventConfidence}>
-                          {(item.confidence * 100).toFixed(0)}%
-                        </Text>
+                        {item.camera !== 'door-sensor' && (
+                          <Text style={styles.eventConfidence}>
+                            {(item.confidence * 100).toFixed(0)}%
+                          </Text>
+                        )}
                       </View>
                       <Text style={styles.eventTimestamp}>{item.ts}</Text>
                     </View>
@@ -629,9 +636,48 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onLogout }) => {
         onClose={() => setAssistantVisible(false)}
         onActionCompleted={loadAllData}
       />
+
+      <SettingsScreen
+        visible={settingsVisible}
+        hubUrl={hubUrl}
+        onClose={() => setSettingsVisible(false)}
+        onHubUrl={(url) => {
+          setHubUrl(url);
+          loadAllData();
+        }}
+        onSignOut={() => {
+          setSettingsVisible(false);
+          onLogout();
+        }}
+        onJoined={loadAllData}
+      />
     </SafeAreaView>
   );
 };
+
+function contactSeen(contact: DoorContact): string {
+  if (!contact.updatedAt) return 'Waiting for the sensor';
+  const when = new Date(contact.updatedAt);
+  if (Number.isNaN(when.getTime())) return 'Waiting for the sensor';
+  return when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function contactBadgeStyle(contact: DoorContact) {
+  if (contact.open === true) return styles.badgeOpen;
+  if (contact.open === false) return styles.badgeDisarmed;
+  return styles.badgeWaiting;
+}
+
+function contactTextStyle(contact: DoorContact) {
+  if (contact.open === true) return styles.textOpen;
+  if (contact.open === false) return styles.textDisarmed;
+  return styles.textWaiting;
+}
+
+function eventIcon(item: DoorEvent): 'log-out-outline' | 'log-in-outline' | 'person-outline' {
+  if (item.camera !== 'door-sensor' && !item.label.startsWith('door ')) return 'person-outline';
+  return item.label.includes('open') ? 'log-out-outline' : 'log-in-outline';
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -746,6 +792,12 @@ const styles = StyleSheet.create({
   badgeDisarmed: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
   },
+  badgeOpen: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+  },
+  badgeWaiting: {
+    backgroundColor: 'rgba(148, 163, 184, 0.15)',
+  },
   statusBadgeText: {
     fontSize: 12,
     fontWeight: '700',
@@ -756,6 +808,12 @@ const styles = StyleSheet.create({
   },
   textDisarmed: {
     color: '#10B981',
+  },
+  textOpen: {
+    color: '#F59E0B',
+  },
+  textWaiting: {
+    color: '#94A3B8',
   },
   alarmAlertBox: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-"""The Elegoo siren sounds once for an armed person at the door."""
+"""The Elegoo siren sounds for an armed person at the door, and for a remote panic."""
 
 from hub.elegoo_alert import AlertDecider, should_sound
 
@@ -24,6 +24,15 @@ def test_new_armed_visit_sends_one_on():
     event = {"id": 4, "label": "person", "camera": "door"}
     assert decider.commands([event], True) == ["ON"]
     assert decider.commands([event], True) == []
+
+
+def test_remote_panic_sounds_while_disarmed():
+    assert should_sound({"label": "panic", "camera": "remote"}, False)
+    decider = AlertDecider()
+    decider.commands([], False)
+    panic = {"id": 9, "label": "panic", "camera": "remote"}
+    assert decider.commands([panic], False) == ["ON"]
+    assert decider.commands([panic], False) == []
 
 
 def test_disarm_sends_off_and_a_driveway_event_does_not_sound():
