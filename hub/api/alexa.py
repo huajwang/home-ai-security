@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hmac
 import json
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -43,8 +44,14 @@ async def alexa_directive(request: Request) -> JSONResponse:
     principal = _lights_principal(request, token)
     if principal is None:
         return JSONResponse(directives.error("INVALID_AUTHORIZATION_CREDENTIAL", "Sign in to Alexa again."))
-    lights = request.app.state.lights
-    return JSONResponse(directives.handle(payload, lights))
+    home = SimpleNamespace(
+        lights=request.app.state.lights,
+        doors=getattr(request.app.state, "doors", None),
+        lock=getattr(request.app.state, "lock", None),
+        state=getattr(request.app.state, "hub_state", None),
+        bus=getattr(request.app.state, "bus", None),
+    )
+    return JSONResponse(directives.handle(payload, home))
 
 
 @router.get("/alexa/oauth/authorize")

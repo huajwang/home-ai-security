@@ -1,6 +1,6 @@
 # Alexa lights through Cloud Link
 
-Alexa can turn paired Zigbee bulbs on and off. It cannot unlock, lock, arm, or disarm. This is a private development skill for one house. It is not certified, and it is not published in the Alexa skill store.
+Alexa can turn paired Zigbee bulbs on and off, arm and disarm the alarm, lock the front door, and report door and lock state. It cannot unlock. This is a private development skill for one house. It is not certified, and it is not published in the Alexa skill store.
 
 The spoken audio never reaches the house. The Echo Dot sends it to Alexa cloud. What comes back is a small JSON directive. The Aliyun relay splices the TLS connection and does not decrypt it. The ROCK 5T is the only machine that reads the Zigbee database or talks to a bulb.
 
@@ -38,7 +38,19 @@ The relay never sees the IEEE address. It only carries the encrypted connection.
 3. Lambda posts that JSON to `https://rock.link.yaojiabuy.com/alexa` with header `X-Home-Ai-Forwarder`. The function itself waits 7 seconds.
 4. DNS for `rock.link.yaojiabuy.com` is `8.129.103.161`. The relay splices the TLS connection to the hub. TLS ends on the hub’s Let’s Encrypt certificate.
 5. `POST /alexa` accepts the request when the forwarder header matches `HUB_ALEXA_FORWARD_SECRET`. A request without that header must instead carry a valid Alexa HTTPS signature. The token must still be a hub JWT with `scope` `lights` and `device_role` `alexa`.
-6. The hub writes the Zigbee OnOff cluster for that IEEE address (`on` is `0x01`, `off` is `0x00`). A lock, arm, or disarm directive is refused here and is not sent to a device.
+6. The hub writes the Zigbee OnOff cluster for that IEEE address (`on` is `0x01`, `off` is `0x00`). An unlock directive is refused here and is not sent to the bolt. A lock directive is sent to the lock.
+
+## Alarm, doors, and lock status
+
+Discovery also returns three more kinds of endpoint:
+
+| Spoken name | What Alexa can do |
+|---|---|
+| `Alarm` | “Alexa, arm Alarm” and “Alexa, disarm.” The hub has one armed state, reported as `ARMED_AWAY` or `DISARMED`. |
+| `Door 1`, `Door 2`, … | “Alexa, is Door 1 open?” Open is `DETECTED`. Closed is `NOT_DETECTED`. A sensor that has not reported yet is unreachable until its magnet moves. |
+| `Front door lock` | “Alexa, lock the front door lock” locks the bolt. “Alexa, is the front door lock locked?” reports `LOCKED` or `UNLOCKED`. “Alexa, unlock” is refused. Unlock stays on the hub API and still requires `confirm=true`. |
+
+Say “Alexa, discover devices” again after this hub change so Amazon stores the new endpoints.
 7. The hub returns an Alexa `Response` with `powerState` `ON` or `OFF`. Lambda returns that JSON unchanged. Alexa plays the Dot’s chime.
 
 ## Configure Cloud Link

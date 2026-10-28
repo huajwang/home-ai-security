@@ -6,6 +6,7 @@ import base64
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from cryptography import x509
@@ -143,15 +144,69 @@ def test_directives_turn_one_light_and_refuse_the_lock() -> None:
     assert lights.calls == [(True, "aa:bb:cc")]
     locked = handle(_directive("Alexa.LockController", "Lock", "aa:bb:cc"), lights)
     assert locked["event"]["header"]["name"] == "ErrorResponse"
-    assert locked["event"]["payload"]["type"] == "INVALID_DIRECTIVE"
+    assert locked["event"]["payload"]["type"] == "NO_SUCH_ENDPOINT"
     armed = handle(_directive("Alexa.SecurityPanelController", "Arm", "panel"), lights)
-    assert "cannot unlock" in armed["event"]["payload"]["message"]
+    assert armed["event"]["header"]["name"] == "ErrorResponse"
     assert lights.calls == [(True, "aa:bb:cc")]
     found = handle({"directive": {"header": {"namespace": "Alexa.Discovery", "name": "Discover"}, "payload": {}}}, lights)
     endpoints = found["event"]["payload"]["endpoints"]
     names = [item["friendlyName"] for item in endpoints]
     assert names == ["Kitchen bbcc", "Kitchen eeff", "E11 G13", "TS0044"]
     assert len({item["endpointId"] for item in endpoints}) == len(endpoints)
+
+
+def test_voice_arms_and_reports_door_and_lock() -> None:
+    home = SimpleNamespace(lights=_Lights(), doors=_Doors(), lock=_Lock(), state=_Alarm(), bus=None)
+    discovered = handle(
+        {"directive": {"header": {"namespace": "Alexa.Discovery", "name": "Discover"}, "payload": {}}},
+        home,
+    )
+    names = [item["friendlyName"] for item in discovered["event"]["payload"]["endpoints"]]
+    assert "Door 1" in names
+    assert "Alarm" in names
+    assert "Front door lock" in names
+    armed = handle(_directive("Alexa.SecurityPanelController", "Arm", "home-alarm"), home)
+    assert armed["context"]["properties"][0]["value"] == "ARMED_AWAY"
+    assert home.state.armed is True
+    disarmed = handle(_directive("Alexa.SecurityPanelController", "Disarm", "home-alarm"), home)
+    assert disarmed["context"]["properties"][0]["value"] == "DISARMED"
+    assert home.state.armed is False
+    door = handle(_directive("Alexa", "ReportState", "aa:11"), home)
+    assert door["context"]["properties"][0]["value"] == "DETECTED"
+    bolt = handle(_directive("Alexa", "ReportState", "home-lock"), home)
+    assert bolt["context"]["properties"][0]["value"] == "LOCKED"
+    refused = handle(_directive("Alexa.LockController", "Unlock", "home-lock"), home)
+    assert refused["event"]["payload"]["type"] == "INVALID_DIRECTIVE"
+    assert home.lock.calls == []
+    bolted = handle(_directive("Alexa.LockController", "Lock", "home-lock"), home)
+    assert bolted["context"]["properties"][0]["value"] == "LOCKED"
+    assert home.lock.calls == [("alexa", None, "alexa")]
+
+
+class _Alarm:
+    def __init__(self) -> None:
+        self.armed = False
+
+    def set_armed(self, armed: bool) -> bool:
+        self.armed = armed
+        return True
+
+
+class _Lock:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int | None, str | None]] = []
+
+    def get_status(self) -> str:
+        return "locked"
+
+    def lock(self, actor: str, device_id: int | None, reason: str | None = None) -> SimpleNamespace:
+        self.calls.append((actor, device_id, reason))
+        return SimpleNamespace(success=True, state="locked", message="locked")
+
+
+class _Doors:
+    def status(self) -> dict[str, object]:
+        return {"contacts": [{"ieee": "aa:11", "name": "Door 1", "open": True}]}
 
 
 def test_unsigned_alexa_post_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,8 +300,11 @@ def test_signed_discovery_and_light_and_locked_token(monkeypatch: pytest.MonkeyP
         )
         assert discovered.status_code == 200
         endpoints = discovered.json()["event"]["payload"]["endpoints"]
-        assert endpoints[0]["endpointId"] == "aa:bb:cc"
-        assert "Alexa.LockController" not in json.dumps(endpoints)
+        lights_only = [item for item in endpoints if item.get("displayCategories") == ["LIGHT"]]
+        assert lights_only[0]["endpointId"] == "aa:bb:cc"
+        assert "Alexa.LockController" not in json.dumps(lights_only)
+        assert any(item["endpointId"] == "home-alarm" for item in endpoints)
+        assert any(item["endpointId"] == "home-lock" for item in endpoints)
         turned = _speak(client, leaf_key, _directive("Alexa.PowerController", "TurnOff", "dd:ee:ff", token))
         assert turned.status_code == 200
         assert turned.json()["context"]["properties"][0]["value"] == "OFF"
