@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, WebSocket
 from fastapi.responses import Response
 
 from hub.api.contacts import contacts_body
-from hub.api.deps import current_principal, get_services
+from hub.api.deps import current_principal, get_services, reject_voice_assistant
 from hub.cloudlink.settings import link_status
 from hub.errors import raise_api
 from hub.media.live import accept_camera_socket, push_jpeg_frames
@@ -85,6 +85,7 @@ async def arm(
     principal: dict[str, Any] = Depends(current_principal),
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
+    reject_voice_assistant(principal)
     changed = services["state"].set_armed(True)
     if changed:
         await services["bus"].publish(
@@ -123,6 +124,7 @@ async def disarm(
     principal: dict[str, Any] = Depends(current_principal),
     services: dict[str, Any] = Depends(get_services),
 ) -> dict[str, Any]:
+    reject_voice_assistant(principal)
     changed = services["state"].set_armed(False)
     if changed:
         await services["bus"].publish(

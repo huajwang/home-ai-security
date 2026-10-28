@@ -11,6 +11,7 @@ from hub.devices.door_sensor import DoorRadio, looks_like_contact
 from hub.devices.scene_remote import ButtonPress, SceneRadio, looks_like_scene_remote
 
 ON_OFF_CLUSTER = 0x0006
+_LIGHT_DEVICE_TYPES = {0x0100, 0x0101, 0x0102, 0x010C, 0x010D, 0x0210, 0x0220}
 RETRY_SECONDS = 5
 
 
@@ -324,8 +325,15 @@ class ZigbeeLights:
 
     async def _list(self) -> list[dict[str, str]]:
         lights = []
-        for device, _endpoint in _light_endpoints(self._app):
-            lights.append({"ieee": str(device.ieee), "name": _device_name(device)})
+        seen: set[str] = set()
+        for device, endpoint in _light_endpoints(self._app):
+            if not _is_light(endpoint):
+                continue
+            ieee = str(device.ieee)
+            if ieee.lower() in seen:
+                continue
+            seen.add(ieee.lower())
+            lights.append({"ieee": ieee, "name": _device_name(device)})
         return lights
 
     async def _set_on(self, turn_on: bool, ieee: str | None) -> dict[str, Any]:
@@ -401,6 +409,16 @@ def _port_is_gone(exc: BaseException) -> bool:
 def _device_name(device: Any) -> str:
     model = getattr(device, "model", None) or getattr(device, "manufacturer", None)
     return str(model) if model else "Zigbee bulb"
+
+
+def _is_light(endpoint: Any) -> bool:
+    kind = getattr(endpoint, "device_type", None)
+    if kind is None:
+        return True
+    try:
+        return int(kind) in _LIGHT_DEVICE_TYPES
+    except (TypeError, ValueError):
+        return True
 
 
 def _light_endpoints(app: Any) -> list[tuple[Any, Any]]:

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from hub import config
-from hub.api import assistant, auth, calls, contacts, driveway, events, lights, lock, system
+from hub.api import alexa, assistant, auth, calls, contacts, driveway, events, lights, lock, system
 from hub.auth import bootstrap_owner
 from hub.devices.doorbell import DoorbellWorker
 from hub.devices.driveway import DrivewayCamera
@@ -131,6 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router)
     app.include_router(lock.router)
     app.include_router(lights.router)
+    app.include_router(alexa.router)
     app.include_router(contacts.router)
     app.include_router(driveway.router)
     app.include_router(calls.router)
