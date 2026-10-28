@@ -78,7 +78,19 @@ def require_owner(principal: dict[str, Any] = Depends(current_principal)) -> dic
     return principal
 
 
+def voice_assistant(principal: dict[str, Any]) -> bool:
+    payload = principal.get("payload") or {}
+    device = principal.get("device") or {}
+    return payload.get("scope") == "lights" or device.get("device_role") == "alexa"
+
+
+def reject_voice_assistant(principal: dict[str, Any]) -> None:
+    if voice_assistant(principal):
+        raise_api(403, "forbidden", "Voice assistants cannot unlock, lock, arm, or disarm.")
+
+
 def require_unlock(principal: dict[str, Any] = Depends(current_principal)) -> dict[str, Any]:
+    reject_voice_assistant(principal)
     if not bool(principal["user"]["can_unlock"]):
         raise_api(403, "forbidden", "Unlock is not allowed for this user")
     return principal

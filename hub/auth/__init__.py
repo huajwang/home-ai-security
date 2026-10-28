@@ -51,16 +51,19 @@ def _secret(store: Store) -> str:
 
 def issue_access_token(store: Store, user: dict[str, Any], device: dict[str, Any]) -> str:
     now = datetime.now(timezone.utc)
+    lights_only = device.get("device_role") == "alexa"
     payload = {
         "sub": str(user["id"]),
         "username": user["username"],
         "role": user["role"],
-        "can_unlock": bool(user["can_unlock"]),
+        "can_unlock": False if lights_only else bool(user["can_unlock"]),
         "device_id": device["id"],
         "device_role": device["device_role"],
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=config.ACCESS_TOKEN_MINUTES)).timestamp()),
     }
+    if lights_only:
+        payload["scope"] = "lights"
     return jwt.encode(payload, _secret(store), algorithm="HS256")
 
 

@@ -148,6 +148,9 @@ TURN_PORT = int(os.getenv("HUB_TURN_PORT", "3478"))
 ALIYUN_ACCESS_KEY_ID = os.getenv("ALIYUN_ACCESS_KEY_ID", "").strip()
 ALIYUN_ACCESS_KEY_SECRET = os.getenv("ALIYUN_ACCESS_KEY_SECRET", "").strip()
 ACME_EMAIL = os.getenv("HUB_ACME_EMAIL", "").strip()
+ALEXA_CLIENT_ID = os.getenv("HUB_ALEXA_CLIENT_ID", "").strip()
+ALEXA_CLIENT_SECRET = os.getenv("HUB_ALEXA_CLIENT_SECRET", "").strip()
+ALEXA_FORWARD_SECRET = os.getenv("HUB_ALEXA_FORWARD_SECRET", "").strip()
 
 
 def ensure_dirs() -> None:
