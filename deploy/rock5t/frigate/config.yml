@@ -1,0 +1,84 @@
+mqtt:
+  host: mosquitto
+  port: 1883
+
+detectors:
+  rknn_0:
+    type: rknn
+    num_cores: 3
+
+ffmpeg:
+  hwaccel_args: preset-rkmpp
+
+# Live view through Cloud Link uses MSE, which rides the HTTPS reverse
+# proxy. WebRTC needs UDP and is only for a phone that can reach port 8555
+# (LAN or Tailscale).
+go2rtc:
+  streams:
+    door:
+      - rtsp://REPLACE_USER:REPLACE_PASS@REPLACE_DOOR_IP:554/h264Preview_01_sub
+      - ffmpeg:door#video=h264#hardware
+    driveway:
+      - "ffmpeg:device?video=/dev/video1&input_format=mjpeg&video_size=640x480&framerate=5#video=h264"
+
+cameras:
+  door:
+    ffmpeg:
+      inputs:
+        - path: rtsp://REPLACE_USER:REPLACE_PASS@REPLACE_DOOR_IP:554/h264Preview_01_sub
+          roles:
+            - detect
+        - path: rtsp://REPLACE_USER:REPLACE_PASS@REPLACE_DOOR_IP:554/h264Preview_01_main
+          roles:
+            - record
+    detect:
+      enabled: true
+      width: 640
+      height: 360
+      fps: 5
+    record:
+      enabled: true
+      continuous:
+        days: 0
+      motion:
+        days: 7
+    objects:
+      track:
+        - person
+        - bicycle
+        - car
+        - motorcycle
+        - bus
+        - dog
+        - cat
+        - backpack
+        - suitcase
+  driveway:
+    ffmpeg:
+      hwaccel_args: []
+      inputs:
+        - path: rtsp://127.0.0.1:8554/driveway
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 640
+      height: 480
+      fps: 5
+    record:
+      enabled: true
+      continuous:
+        days: 0
+      motion:
+        days: 7
+    objects:
+      track:
+        - person
+        - car
+        - bicycle
+        - motorcycle
+        - bus
+
+version: 0.16-0

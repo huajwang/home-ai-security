@@ -1,5 +1,9 @@
 # Hub API v1
 
+This API belonged to the Python hub, which has been removed. Home Assistant on port 8123 is the control plane. See [ha-cutover.md](ha-cutover.md).
+
+
+
 All control routes are HTTPS. Send `Authorization: Bearer <access_token>` unless noted.
 
 Errors: `{ "code": "unauthorized", "message": "..." }` with HTTP 401 / 403 / 409 / 429.

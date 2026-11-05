@@ -1,4 +1,4 @@
-"""Run the trial relay: SNI passthrough plus the backup and voice HTTP API.
+"""Run the trial relay: SNI passthrough plus the backup HTTP API.
 
 LINK_SNI_HOST and LINK_SNI_PORT choose who owns public 443. See link/SWITCH.md.
 Relay mode listens on 0.0.0.0:443. Yaojia mode listens on 127.0.0.1:4430 and nginx serves the site.
@@ -17,7 +17,7 @@ from link.app import create_app
 def _keys() -> list[str]:
     raw = [item.strip() for item in os.getenv("LINK_FERNET_KEYS", "").split(",") if item.strip()]
     if not raw:
-        raise SystemExit("Set LINK_FERNET_KEYS to the same value as HUB_LINK_FERNET_KEY on the hub.")
+        raise SystemExit("Set LINK_FERNET_KEYS to the same value as HUB_LINK_FERNET_KEY on the ROCK 5T.")
     return raw
 
 

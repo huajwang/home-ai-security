@@ -1,0 +1,77 @@
+# ROCK 5T stack. Home Assistant stays on the host network so Companion
+# apps and Tailscale reach port 8123 directly. Frigate is not published
+# except on localhost and the go2rtc WebRTC port used by a Tailscale path.
+# Caddy is in the "link" profile: start it only after the hub process has
+# released 127.0.0.1:8444. See docs/ha-cutover.md.
+
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    network_mode: host
+    privileged: true
+    volumes:
+      - /mnt/hub-data/home-ai/homeassistant:/config
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - /mnt/hub-data/home-ai/mosquitto:/mosquitto/data
+    ports:
+      - "127.0.0.1:1883:1883"
+    restart: unless-stopped
+
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable-rk
+    container_name: frigate
+    privileged: true
+    shm_size: "512mb"
+    devices:
+      - /dev/dri
+      - /dev/rga
+      - /dev/mpp_service
+    volumes:
+      - ./frigate/config.yml:/config/config.yml:ro
+      - /mnt/hub-data/home-ai/frigate/media:/media/frigate
+      - /dev/video1:/dev/video1
+      - /dev/dma_heap:/dev/dma_heap
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:8554:8554"
+      - "127.0.0.1:8971:8971"
+      - "8555:8555"
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
+  zwave-js-ui:
+    image: zwavejs/zwave-js-ui:latest
+    container_name: zwave-js-ui
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    volumes:
+      - /mnt/hub-data/home-ai/zwave-js:/usr/src/app/store
+    ports:
+      - "127.0.0.1:8091:8091"
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: cloudlink-caddy
+    profiles: ["link"]
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /home/radxa/home-ai-security/certs:/certs:ro
+    restart: unless-stopped

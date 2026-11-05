@@ -1,5 +1,7 @@
 # Home Assistant 与 HAOS 研究底稿
 
+产品路径已经改成 Debian 上的 Home Assistant Container，见 [ha-cutover.md](../ha-cutover.md)。下面是当时和 HAOS 对照的记录。
+
 日期：2026-10-27（美东）。这份底稿把 Home Assistant、它的生态和 HAOS 记下来，供接下来对照我们自己的 Hub 找差距。这里不选定方案。解决方案等研究之后再写。
 
 相关材料仍在对话旁的两份画布里，不在本仓库：

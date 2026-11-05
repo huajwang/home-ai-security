@@ -1,8 +1,8 @@
 # Live camera traffic and what it costs
 
-The Live Cameras card sends JPEG frames only while it is on screen. Cloud Link does not upload the camera to Aliyun by itself. The always-on piece is a small outbound tunnel so a phone away from home can open that card later.
+Live view is a Frigate card inside Home Assistant. On Tailscale or the LAN the bytes stay between the phone and the ROCK 5T. Through Cloud Link they cross Aliyun, and the card uses MSE so the video stays inside the one TLS connection. The figures below are from the old hub JPEG stream and are the right order of magnitude for an Aliyun day with a card left open.
 
-One card shows one camera, the tab that is selected. The hub encodes each frame in `hub/media/live.py`: width at most 640 pixels, JPEG quality 60, about 10 frames a second. The iOS card opens the socket in `ios-app/src/components/CameraLive.tsx` and closes it when the card unmounts.
+The old hub encoded each frame in `hub/media/live.py`: width at most 640 pixels, JPEG quality 60, about 10 frames a second. That client has been removed.
 
 | Camera | Socket |
 |---|---|

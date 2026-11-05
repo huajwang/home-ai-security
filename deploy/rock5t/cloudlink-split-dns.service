@@ -1,0 +1,12 @@
+[Unit]
+Description=Tailscale split DNS for the Cloud Link name
+After=tailscaled.service network-online.target
+Wants=tailscaled.service
+
+[Service]
+ExecStart=/usr/bin/python3 /home/radxa/home-ai-security/deploy/rock5t/split_dns.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -8,9 +8,9 @@
 #   1. DNS A record:    link.yaojiabuy.com      -> this machine
 #   2. DNS A record:    *.link.yaojiabuy.com   -> this machine
 #   3. Put LINK_FERNET_KEYS in /etc/home-ai-link.env
-#      (the same value as HUB_LINK_FERNET_KEY on the hub)
+#      (the same value as HUB_LINK_FERNET_KEY on the ROCK 5T)
 #   4. Issue a certificate for each house with:
-#        python -m hub.cloudlink.dns01
+#        python -m link.dns01
 #      after ALIYUN_ACCESS_KEY_ID and ALIYUN_ACCESS_KEY_SECRET are set,
 #      then follow certbot_args() in that module.
 #   5. Only then include link/nginx-stream.conf. Public 443 is already

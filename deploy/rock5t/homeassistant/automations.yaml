@@ -1,0 +1,56 @@
+- id: armed_person_at_the_door
+  alias: Armed person at the door
+  mode: queued
+  trigger:
+    - platform: mqtt
+      topic: frigate/events
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.payload_json['type'] == 'new'
+           and trigger.payload_json['after']['camera'] == 'door'
+           and trigger.payload_json['after']['label'] == 'person'
+           and is_state('alarm_control_panel.alarm', 'armed_away') }}
+  action:
+    - action: rest_command.elegoo_event
+      data:
+        id: "{{ trigger.payload_json['after']['id'] }}"
+        label: person
+        camera: door
+        armed: "true"
+
+- id: alarm_disarmed_siren_off
+  alias: Disarm silences the siren
+  trigger:
+    - platform: state
+      entity_id: alarm_control_panel.alarm
+      to: disarmed
+  action:
+    - action: rest_command.elegoo_event
+      data:
+        id: "disarm-{{ now().timestamp() }}"
+        label: ""
+        camera: ""
+        armed: "false"
+
+# Button 4 held for 5 seconds. After pairing, set device_ieee from
+# Developer Tools, Events, zha_event. TS0044 long presses usually arrive
+# as remote_button_long_press on endpoint 4.
+- id: scene_remote_panic
+  alias: Scene remote panic
+  trigger:
+    - platform: event
+      event_type: zha_event
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.event.data.device_ieee == 'REPLACE_REMOTE_IEEE'
+           and trigger.event.data.endpoint_id | int(0) == 4
+           and trigger.event.data.command in ['remote_button_long_press', 'hold', 'move'] }}
+  action:
+    - action: rest_command.elegoo_event
+      data:
+        id: "panic-{{ now().timestamp() }}"
+        label: panic
+        camera: remote
+        armed: "false"

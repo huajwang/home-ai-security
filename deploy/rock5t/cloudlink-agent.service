@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloud Link dial-out to Aliyun
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=radxa
+Group=radxa
+WorkingDirectory=/home/radxa/home-ai-security
+EnvironmentFile=-/home/radxa/home-ai-security/hub.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/radxa/home-ai-security/.venv/bin/python -m link.agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

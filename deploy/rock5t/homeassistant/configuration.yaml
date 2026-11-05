@@ -1,0 +1,66 @@
+default_config:
+
+# Copy this file to /mnt/hub-data/home-ai/homeassistant/configuration.yaml
+# before the first start, and create secrets.yaml beside it.
+# Replace internal_url with the board's LAN address.
+# Do not add the ZHA integration until home-ai-hub has released /dev/ttyUSB0.
+
+homeassistant:
+  external_url: https://rock.link.yaojiabuy.com
+  internal_url: http://10.0.0.84:8123
+
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
+
+alexa:
+  smart_home:
+    locale: en-US
+    endpoint: https://api.amazonalexa.com/v3/events
+    client_id: !secret alexa_client_id
+    client_secret: !secret alexa_client_secret
+    filter:
+      include_domains:
+        - light
+        - alarm_control_panel
+        - script
+        - binary_sensor
+      exclude_domains:
+        - lock
+        - camera
+
+alarm_control_panel:
+  - platform: manual
+    name: Alarm
+    unique_id: home_alarm
+    code_arm_required: false
+
+script:
+  lock_front_door:
+    alias: Front door lock
+    icon: mdi:lock
+    sequence:
+      - action: lock.lock
+        target:
+          entity_id: lock.touchscreen_deadbolt_z_wave_plus
+
+template:
+  - binary_sensor:
+      - name: Front door bolt
+        unique_id: front_door_bolt
+        device_class: lock
+        state: "{{ is_state('lock.touchscreen_deadbolt_z_wave_plus', 'unlocked') }}"
+
+rest_command:
+  elegoo_event:
+    url: !secret elegoo_url
+    method: POST
+    headers:
+      X-Elegoo-Token: !secret elegoo_token
+    content_type: application/json
+    payload: >-
+      {"id":"{{ id }}","label":"{{ label }}","camera":"{{ camera }}","armed":{{ armed | lower }}}
+
+automation: !include automations.yaml

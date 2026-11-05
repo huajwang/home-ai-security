@@ -1,4 +1,4 @@
-# Deploy local hub code to ROCK 5T board via SCP and SSH
+# Copy the Home Assistant stack to the ROCK 5T. Does not restart the old hub.
 param(
     [string]$TargetHost = "10.0.0.83",
     [string]$User = "radxa",
@@ -7,27 +7,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "==> Step 1: Running local verification tests..." -ForegroundColor Cyan
+Write-Host "==> Running tests..." -ForegroundColor Cyan
 python -m pytest
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Tests failed! Aborting deployment." -ForegroundColor Red
+    Write-Host "Tests failed. Nothing was copied." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "==> Step 2: Packaging hub files..." -ForegroundColor Cyan
-$tarFile = "hub_dist.tar.gz"
-if (Test-Path $tarFile) { Remove-Item -Force $tarFile }
+Write-Host "==> Copying deploy/rock5t, link, and docs to ${User}@${TargetHost}..." -ForegroundColor Cyan
+ssh "${User}@${TargetHost}" "mkdir -p ${RemoteDir}/deploy ${RemoteDir}/docs ${RemoteDir}/link"
+scp -r deploy\rock5t deploy\elegoo_alert.py "${User}@${TargetHost}:${RemoteDir}/deploy/"
+scp -r link "${User}@${TargetHost}:${RemoteDir}/"
+scp -r docs\ha-cutover.md docs\lovelace.md docs\alexa.md "${User}@${TargetHost}:${RemoteDir}/docs/"
 
-# Pack core python services and dependencies, excluding caches
-tar --exclude='__pycache__' --exclude='*.pyc' --exclude='_tmp*' -czvf $tarFile hub requirements.txt
-
-Write-Host "==> Step 3: Copying archive to ROCK 5T ($User@$TargetHost)..." -ForegroundColor Cyan
-scp $tarFile "${User}@${TargetHost}:/tmp/${tarFile}"
-
-Write-Host "==> Step 4: Extracting and restarting service on ROCK 5T..." -ForegroundColor Cyan
-ssh "${User}@${TargetHost}" "mkdir -p ${RemoteDir} && tar -xzvf /tmp/${tarFile} -C ${RemoteDir}/ && rm -f /tmp/${tarFile} && sudo systemctl restart home-ai-hub"
-
-if (Test-Path $tarFile) { Remove-Item -Force $tarFile }
-
-Write-Host "`n Deployment to ROCK 5T successful!" -ForegroundColor Green
-Write-Host "home-ai-hub.service has been restarted with the latest mask detection code." -ForegroundColor Green
+Write-Host "Files are on the board. Follow docs/ha-cutover.md. This script does not stop home-ai-hub." -ForegroundColor Green

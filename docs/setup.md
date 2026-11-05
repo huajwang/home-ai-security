@@ -1,5 +1,7 @@
 # Prototype setup
 
+The running system is Home Assistant on the ROCK 5T. Use [ha-cutover.md](ha-cutover.md). The rest of this page describes the retired hub process and is not the setup path.
+
 ## Hub on the desktop PC
 
 From the repo root:

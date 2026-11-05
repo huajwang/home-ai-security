@@ -1,6 +1,6 @@
 """The Elegoo siren sounds for an armed person at the door, and for a remote panic."""
 
-from hub.elegoo_alert import AlertDecider, should_sound
+from deploy.elegoo_alert import AlertDecider, should_sound
 
 
 def test_sounds_only_for_armed_person_at_the_door():

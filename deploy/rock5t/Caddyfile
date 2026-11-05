@@ -1,0 +1,20 @@
+{
+	admin off
+	auto_https off
+}
+
+# snitun splices the public TLS connection for rock.link.yaojiabuy.com
+# onto this port. The certificate must be the one clients already trust.
+https://rock.link.yaojiabuy.com:8444 {
+	bind 127.0.0.1
+	tls /certs/link.pem /certs/link-key.pem
+	reverse_proxy 127.0.0.1:8123
+}
+
+# Same name on the Tailscale address. Split DNS sends tailnet clients here,
+# so they skip Aliyun. Everyone else still uses the public name on port 443,
+# which Cloud Link splices to the site above.
+https://rock.link.yaojiabuy.com {
+	tls /certs/link.pem /certs/link-key.pem
+	reverse_proxy 127.0.0.1:8123
+}

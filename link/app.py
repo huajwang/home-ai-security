@@ -1,4 +1,4 @@
-"""Relay HTTP API: ciphertext backups, and a voice webhook that stays off in China."""
+"""Relay HTTP API for ciphertext backups."""
 
 from __future__ import annotations
 
@@ -10,16 +10,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-
-from link.voice import decide
 
 _HOME_ID = re.compile(r"^[A-Za-z0-9._-]{1,200}$")
-
-
-class VoiceBody(BaseModel):
-    action: str
-    home: str = ""
 
 
 def create_app() -> FastAPI:
@@ -47,11 +39,6 @@ def create_app() -> FastAPI:
         target = folder / f"{stamp}.bin"
         target.write_bytes(body)
         return JSONResponse({"stored": True, "bytes": len(body)})
-
-    @app.post("/voice/command")
-    def voice(body: VoiceBody) -> JSONResponse:
-        decision = decide(region, body.action)
-        return JSONResponse(decision.body, status_code=decision.status)
 
     return app
 

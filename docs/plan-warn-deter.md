@@ -14,7 +14,7 @@ After a confirmed person event, the hub may act on its own:
 
 - Speak a short warning on the doorbell speaker.
 - Turn on a light.
-- A siren and LED on the Elegoo Mega 2560. That board has no Wi-Fi. It is a USB serial device on the Dell PC (`COM6`). The sketch is `firmware/elegoo-mega/elegoo-mega.ino` (LED on pin 8, buzzer on pin 9, 4 second burst). `python -m hub.elegoo_alert` on that PC sends one `ON` for a new person at the door while armed, ignores the driveway, and sends `OFF` on disarm. It does not unlock.
+- A siren and LED on the Elegoo Mega 2560. That board has no Wi-Fi. It is a USB serial device on the Dell PC (`COM6`). The sketch is `firmware/elegoo-mega/elegoo-mega.ino` (LED on pin 8, buzzer on pin 9, 4 second burst). `python deploy/elegoo_alert.py` on that PC sends one `ON` when Home Assistant reports a new person at the door while armed, ignores the driveway, and sends `OFF` on disarm. It does not unlock.
 
 The phone notice stays. These actions are in addition to the notice, not a replacement.
 
