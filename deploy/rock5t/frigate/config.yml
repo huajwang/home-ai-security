@@ -28,8 +28,6 @@ cameras:
         - path: rtsp://REPLACE_USER:REPLACE_PASS@REPLACE_DOOR_IP:554/h264Preview_01_sub
           roles:
             - detect
-        - path: rtsp://REPLACE_USER:REPLACE_PASS@REPLACE_DOOR_IP:554/h264Preview_01_main
-          roles:
             - record
     detect:
       enabled: true

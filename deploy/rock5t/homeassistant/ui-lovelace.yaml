@@ -1,0 +1,2 @@
+# YAML mode reads this filename. The views live in dashboards/home.yaml.
+!include dashboards/home.yaml

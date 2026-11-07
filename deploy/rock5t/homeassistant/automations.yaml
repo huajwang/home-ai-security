@@ -54,3 +54,36 @@
         label: panic
         camera: remote
         armed: "false"
+
+# Frigate publishes type "new" once, when a detection becomes a real person.
+# The siren automation above stays limited to the door while armed away.
+- id: person_detected_notify
+  alias: Notify when a person is detected
+  mode: parallel
+  max: 5
+  trigger:
+    - platform: mqtt
+      topic: frigate/events
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.payload_json['type'] == 'new'
+           and trigger.payload_json['after']['label'] == 'person'
+           and trigger.payload_json['after']['camera'] in ['door', 'driveway'] }}
+  action:
+    - action: notify.mobile_app_huajians_iphone
+      data:
+        title: "Person at the {{ trigger.payload_json['after']['camera'] | title }}"
+        message: A person was detected.
+        data:
+          url: /lovelace/cameras
+          presentation_options:
+            - alert
+            - banner
+            - list
+            - sound
+    - action: persistent_notification.create
+      data:
+        title: "Person at the {{ trigger.payload_json['after']['camera'] | title }}"
+        message: A person was detected.
+        notification_id: person-detected
