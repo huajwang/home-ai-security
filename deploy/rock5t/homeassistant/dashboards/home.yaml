@@ -1,0 +1,80 @@
+title: Home
+views:
+  - title: Home
+    path: home
+    theme: Home
+    type: sections
+    max_columns: 4
+    sections:
+      - type: grid
+        column_span: 4
+        cards:
+          - type: custom:product-status-card
+            alarm: alarm_control_panel.alarm
+            lock: lock.touchscreen_deadbolt_z_wave_plus
+            doors: []
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:product-camera-card
+            entity: camera.door
+            name: Door
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:product-camera-card
+            entity: camera.driveway
+            name: Driveway
+      - type: grid
+        column_span: 4
+        cards:
+          - type: custom:product-light-card
+            entity: light.interior
+      - type: grid
+        column_span: 4
+        cards:
+          - type: custom:product-doors-card
+            entities: []
+
+  - title: Security
+    path: security
+    theme: Home
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:product-status-card
+            alarm: alarm_control_panel.alarm
+            lock: lock.touchscreen_deadbolt_z_wave_plus
+            doors: []
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:product-lock-card
+            entity: lock.touchscreen_deadbolt_z_wave_plus
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:product-doors-card
+            entities: []
+
+  - title: Cameras
+    path: cameras
+    theme: Home
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: custom:product-camera-card
+            entity: camera.door
+            name: Door
+            large: true
+      - type: grid
+        cards:
+          - type: custom:product-camera-card
+            entity: camera.driveway
+            name: Driveway
+            large: true

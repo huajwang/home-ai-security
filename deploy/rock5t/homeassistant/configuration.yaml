@@ -1,19 +1,48 @@
 default_config:
 
+frontend:
+  themes: !include_dir_merge_named themes
+  extra_module_url:
+    - /local/product/boot.js
+
+lovelace:
+  resource_mode: yaml
+  dashboards:
+    lovelace:
+      mode: yaml
+      filename: ui-lovelace.yaml
+      title: Home
+      icon: mdi:shield-home
+      show_in_sidebar: true
+  resources:
+    - url: /local/product/product-status-card.js?v=1
+      type: module
+    - url: /local/product/product-lock-card.js?v=1
+      type: module
+    - url: /local/product/product-camera-card.js?v=1
+      type: module
+    - url: /local/product/product-light-card.js?v=1
+      type: module
+    - url: /local/product/product-doors-card.js?v=1
+      type: module
+
+# The phone notify entity cannot attach a URL. This service can, so a tap
+# opens the cameras view and the iPhone banner keeps the title and message.
+notify:
+  - platform: mobile_app
+
 # Copy this file to /mnt/hub-data/home-ai/homeassistant/configuration.yaml
 # before the first start, and create secrets.yaml beside it.
 # Replace internal_url with the board's LAN address.
 # Do not add the ZHA integration until home-ai-hub has released /dev/ttyUSB0.
 
 homeassistant:
+  country: US
+  time_zone: America/New_York
+  unit_system: us_customary
+  currency: USD
   external_url: https://rock.link.yaojiabuy.com
   internal_url: http://10.0.0.84:8123
-
-http:
-  use_x_forwarded_for: true
-  trusted_proxies:
-    - 127.0.0.1
-    - ::1
 
 alexa:
   smart_home:
